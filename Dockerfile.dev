@@ -13,10 +13,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copier les requirements et installer les dépendances Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --timeout 300 --retries 3 --index-url https://pypi.org/simple/ --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r requirements.txt
 
 # Installer des outils de développement supplémentaires
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --timeout 300 --retries 3 \
     pytest \
     pytest-asyncio \
     black \

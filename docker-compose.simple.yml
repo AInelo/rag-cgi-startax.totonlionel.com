@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  # Service principal RAG CGI API - exposé directement
+  rag-cgi-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    ports:
+      - "8080:8000"  # Exposé directement sur le port 8080
+    volumes:
+      - ./data:/app/data
+      - ./vector_db:/app/vector_db
+      - ./.env:/app/.env
+    environment:
+      - ENVIRONMENT=production
+      - HF_TOKEN=${HF_TOKEN}
+      - VECTOR_STORE_TYPE=sklearn
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  vector_db:
+
+networks:
+  default:
+    name: rag-cgi-simple-network 

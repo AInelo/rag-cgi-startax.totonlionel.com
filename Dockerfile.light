@@ -1,0 +1,30 @@
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Installer uniquement les dépendances essentielles
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    && rm -rf /var/cache/apk/*
+
+# Copier et installer les requirements légers
+COPY requirements.light.txt .
+RUN pip install --no-cache-dir --timeout 300 -r requirements.light.txt
+
+# Créer les dossiers nécessaires
+RUN mkdir -p /app/data/cgi_documents /app/vector_db
+
+# Copier le code de l'application
+COPY . .
+
+# Créer un utilisateur non-root
+RUN adduser -D app && chown -R app:app /app
+USER app
+
+# Exposer le port
+EXPOSE 8000
+
+# Commande de démarrage
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 

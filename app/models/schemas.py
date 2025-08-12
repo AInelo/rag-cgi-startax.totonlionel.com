@@ -4,7 +4,7 @@ from datetime import datetime
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=10, max_length=2000, description="Question à poser")
-    context_type: str = Field("general", regex="^(general|particulier|entreprise|fiscal)$")
+    context_type: str = Field("general", pattern="^(general|particulier|entreprise|fiscal)$")
     max_sources: int = Field(3, ge=1, le=10, description="Nombre max de sources")
     temperature: float = Field(0.3, ge=0.0, le=1.0, description="Créativité de la réponse")
 

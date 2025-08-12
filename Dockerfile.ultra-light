@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer uniquement les dépendances essentielles
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copier et installer les requirements ultra-légers
+COPY requirements.ultra-light.txt .
+RUN pip install --no-cache-dir --timeout 300 -r requirements.ultra-light.txt
+
+# Créer les dossiers nécessaires avec les bonnes permissions
+RUN mkdir -p /app/data/cgi_documents /app/vector_db /app/logs
+
+# Copier le code de l'application
+COPY . .
+
+# Créer un utilisateur non-root et donner les permissions
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app && \
+    chmod -R 755 /app/vector_db
+
+USER app
+
+# Exposer le port
+EXPOSE 8000
+
+# Commande de démarrage
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 

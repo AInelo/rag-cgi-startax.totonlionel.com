@@ -1,49 +1,38 @@
+# Fichiers système
+.DS_Store
+Thumbs.db
+
 # Git
 .git
 .gitignore
-.gitattributes
-
-# Documentation
-README.md
-*.md
-docs/
-
-# Docker
-Dockerfile*
-docker-compose*.yml
-.dockerignore
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
 
-# Virtual environments
-.env
-.venv
-env/
+# Environnement virtuel
 venv/
 ENV/
-env.bak/
-venv.bak/
+env/
+.venv/
 
 # IDE
 .vscode/
@@ -61,63 +50,26 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-*.log
-logs/
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
 
-# Temporary files
+# Documentation
+README.md
+*.md
+docs/
+
+# Tests
+tests/
+test_*
+
+# Logs
+logs/
+*.log
+
+# Données temporaires
 *.tmp
 *.temp
-.cache/
-
-# Test coverage
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Node.js (si utilisé)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Local development
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local 
+vector_db/
+__pycache__/ 

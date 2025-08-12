@@ -42,16 +42,16 @@ class DocumentSource:
         }
 
 class RAGService:
-    def __init__(self, api_key: str = "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"):
+    def __init__(self, api_key: str = None):
         """
         Service RAG pour le Code Général des Impôts
         
         Args:
-            api_key: Clé API Hugging Face
+            api_key: Clé API Hugging Face (HF_TOKEN)
         """
-        self.api_key = api_key
-        self.llm_service = LLMService(api_key)
-        self.embedding_service = EmbeddingService(api_key, use_local=True)
+        self.api_key = api_key or os.getenv("HF_TOKEN", "")
+        self.llm_service = LLMService(self.api_key)
+        self.embedding_service = EmbeddingService(self.api_key)
         self.vector_store = VectorStore()
         self.markdown_parser = MarkdownParser()
         self.text_splitter = TextSplitter()
@@ -69,7 +69,7 @@ class RAGService:
         
         try:
             # Initialiser les composants
-            await self.embedding_service.initialize()
+            # Le service d'embeddings est maintenant initialisé automatiquement
             await self.vector_store.initialize()
             
             self.is_initialized = True
@@ -129,7 +129,7 @@ class RAGService:
             # Créer les embeddings en batch
             texts = [chunk['content'] for chunk in all_chunks]
             logger.info("🧠 Génération des embeddings...")
-            embeddings = await self.embedding_service.encode_batch(texts, batch_size=16)
+            embeddings = await self.embedding_service.get_embeddings(texts)
             
             # Sauvegarder dans la base vectorielle
             logger.info("💾 Sauvegarde dans la base vectorielle...")
@@ -219,7 +219,7 @@ class RAGService:
         
         try:
             # Créer l'embedding de la question
-            question_embedding = await self.embedding_service.encode_text(question)
+            question_embedding = await self.embedding_service.get_embedding(question)
             
             # Rechercher dans la base vectorielle
             results = await self.vector_store.similarity_search(
@@ -296,14 +296,18 @@ class RAGService:
         sources.sort(key=lambda s: s.relevance_score, reverse=True)
         return sources
     
-    async def generate_response_stream(self, question: str, 
-                                     sources: List[DocumentSource]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def generate_response_stream(self, question: str,
+                                     sources: List[DocumentSource],
+                                     temperature: float = 0.3,
+                                     max_tokens: int = 1000) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Génère une réponse streamée basée sur les sources trouvées
         
         Args:
             question: Question de l'utilisateur
             sources: Sources pertinentes trouvées
+            temperature: Température pour la génération (0.0 à 1.0)
+            max_tokens: Nombre maximum de tokens à générer
             
         Yields:
             Chunks de réponse avec métadonnées
@@ -336,30 +340,13 @@ Consignes:
                 {"role": "user", "content": user_prompt}
             ]
             
-            # Générer la réponse streamée
-            async for chunk in self.llm_service.generate_response_stream(messages, temperature=0.3):
-                
-                if chunk["type"] == "content":
-                    yield {
-                        "content": chunk["content"],
-                        "tokens": chunk.get("tokens", 0),
-                        "model": chunk.get("model"),
-                        "partial": chunk.get("partial", True)
-                    }
-                elif chunk["type"] == "complete":
-                    yield {
-                        "content": "",
-                        "tokens": chunk.get("tokens_used", 0),
-                        "model": chunk.get("model"),
-                        "processing_time": chunk.get("processing_time", 0),
-                        "cost_estimate": chunk.get("cost_estimate", 0),
-                        "complete": True
-                    }
-                elif chunk["type"] == "error":
-                    yield {
-                        "error": chunk["content"],
-                        "complete": True
-                    }
+            # Générer la réponse avec le vrai LLM Microsoft Phi-4
+            async for chunk in self.llm_service.generate_response_stream(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            ):
+                yield chunk
                     
         except Exception as e:
             logger.error(f"❌ Erreur génération réponse: {e}")
@@ -387,6 +374,43 @@ Score de pertinence: {source.relevance_score:.2f}
             context_parts.append(context_part)
         
         return "\n".join(context_parts)
+    
+    def _generate_simple_response(self, question: str, sources: List[DocumentSource]) -> str:
+        """Génère une réponse simple basée sur les sources trouvées"""
+        try:
+            if not sources:
+                return "Je n'ai pas trouvé d'informations pertinentes dans le Code Général des Impôts pour répondre à votre question."
+            
+            # Extraire le contenu des sources
+            source_contents = []
+            for source in sources:
+                content = source.content
+                if content and len(content) > 50:
+                    # Nettoyer le contenu
+                    clean_content = content.replace('\n', ' ').replace('  ', ' ').strip()
+                    source_contents.append(clean_content[:400])  # Limiter la longueur
+            
+            if not source_contents:
+                return "Les sources trouvées ne contiennent pas d'informations suffisantes pour répondre à votre question."
+            
+            # Construire la réponse
+            response_parts = []
+            response_parts.append(f"Basé sur l'analyse du Code Général des Impôts du Bénin, voici ce que j'ai trouvé concernant votre question :")
+            response_parts.append("")
+            
+            # Ajouter des extraits des sources les plus pertinentes
+            for i, content in enumerate(source_contents[:3], 1):
+                response_parts.append(f"**Source {i} :**")
+                response_parts.append(content)
+                response_parts.append("")
+            
+            response_parts.append("**Note :** Cette réponse est basée sur l'analyse automatique des documents CGI. Pour des informations juridiques précises et à jour, consultez un professionnel du droit ou l'administration fiscale.")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            logger.error(f"Erreur génération réponse simple: {str(e)}")
+            return "Je ne peux pas générer de réponse pour le moment. Veuillez reformuler votre question."
     
     def _create_system_prompt(self) -> str:
         """Crée le prompt système pour le LLM"""

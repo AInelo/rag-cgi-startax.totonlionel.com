@@ -1,0 +1,32 @@
+FROM python:3.11-slim
+
+# Installation des dépendances système minimales
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Création de l'utilisateur et du répertoire de travail
+WORKDIR /app
+RUN useradd -m -u 1000 app && chown -R app:app /app
+
+# Copie des fichiers de dépendances
+COPY requirements.simple.txt .
+
+# Installation des dépendances Python
+RUN pip install --no-cache-dir --timeout 300 -r requirements.simple.txt
+
+# Création du répertoire vector_db avec les bonnes permissions
+RUN mkdir -p /app/vector_db && chmod -R 755 /app/vector_db
+
+# Copie du code source
+COPY app/ ./app/
+COPY static/ ./static/
+
+# Changement d'utilisateur
+USER app
+
+# Exposition du port
+EXPOSE 8000
+
+# Commande de démarrage
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 

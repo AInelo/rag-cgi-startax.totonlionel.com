@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG CGI - Test Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        .input-section, .output-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+        }
+        .input-section h3, .output-section h3 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            font-size: 14px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .response {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 2px solid #e9ecef;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .sources {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e9ecef;
+            border-radius: 8px;
+        }
+        .source-item {
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .loading {
+            color: #667eea;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #c3e6cb;
+        }
+        .stats {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .health-check {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .health-status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .health-ok {
+            background: #d4edda;
+            color: #155724;
+        }
+        .health-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 RAG CGI - Code Général des Impôts</h1>
+        
+        <div class="health-check">
+            <div id="health-status" class="health-status health-ok">✅ Système opérationnel</div>
+        </div>
+        
+        <div class="grid">
+            <div class="input-section">
+                <h3>📝 Question</h3>
+                <textarea id="question" placeholder="Posez votre question sur le Code Général des Impôts...&#10;&#10;Exemples:&#10;- Quels sont les taux de TVA applicables ?&#10;- Comment calculer l'impôt sur le revenu ?&#10;- Quelles sont les obligations fiscales des entreprises ?"></textarea>
+                
+                <div class="stats">
+                    <strong>Configuration:</strong><br>
+                    • Type de contexte: <select id="context-type">
+                        <option value="general">Général</option>
+                        <option value="particulier">Particulier</option>
+                        <option value="entreprise">Entreprise</option>
+                        <option value="fiscal">Fiscal</option>
+                    </select><br>
+                    • Nombre de sources: <input type="number" id="max-sources" value="3" min="1" max="10" style="width: 60px;"><br>
+                    • Créativité: <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.3" style="width: 100px;">
+                    <span id="temp-value">0.3</span>
+                </div>
+                
+                <button id="ask-btn" onclick="askQuestion()">🚀 Poser la question</button>
+            </div>
+            
+            <div class="output-section">
+                <h3>💡 Réponse</h3>
+                <div id="response" class="response">
+                    <div style="text-align: center; color: #6c757d; padding: 40px;">
+                        <div style="font-size: 3em; margin-bottom: 20px;">🤔</div>
+                        <div>Posez une question pour commencer...</div>
+                    </div>
+                </div>
+                
+                <div id="sources" class="sources" style="display: none;">
+                    <h4>📚 Sources utilisées</h4>
+                    <div id="sources-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mise à jour de la valeur de température
+        document.getElementById('temperature').addEventListener('input', function(e) {
+            document.getElementById('temp-value').textContent = e.target.value;
+        });
+
+        // Vérification de la santé du système
+        async function checkHealth() {
+            try {
+                const response = await fetch('http://localhost:8080/health');
+                const data = await response.json();
+                
+                const statusEl = document.getElementById('health-status');
+                if (data.status === 'healthy') {
+                    statusEl.className = 'health-status health-ok';
+                    statusEl.textContent = `✅ Système opérationnel (${data.documents_indexed} documents indexés)`;
+                } else {
+                    statusEl.className = 'health-status health-error';
+                    statusEl.textContent = '❌ Système en erreur';
+                }
+            } catch (error) {
+                const statusEl = document.getElementById('health-status');
+                statusEl.className = 'health-status health-error';
+                statusEl.textContent = '❌ Impossible de contacter l\'API';
+            }
+        }
+
+        // Pose de question
+        async function askQuestion() {
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                alert('Veuillez saisir une question');
+                return;
+            }
+
+            const askBtn = document.getElementById('ask-btn');
+            const responseEl = document.getElementById('response');
+            const sourcesEl = document.getElementById('sources');
+            
+            // Désactiver le bouton et afficher le chargement
+            askBtn.disabled = true;
+            askBtn.textContent = '⏳ Traitement en cours...';
+            
+            responseEl.innerHTML = '<div class="loading">🤖 Génération de la réponse en cours...</div>';
+            sourcesEl.style.display = 'none';
+
+            try {
+                const contextType = document.getElementById('context-type').value;
+                const maxSources = document.getElementById('max-sources').value;
+                const temperature = document.getElementById('temperature').value;
+
+                const response = await fetch(`http://localhost:8080/query/stream?question=${encodeURIComponent(question)}&context_type=${contextType}&max_sources=${maxSources}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
+                let sources = [];
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'content') {
+                                    fullResponse += data.content;
+                                    responseEl.innerHTML = `<div class="success">${fullResponse}</div>`;
+                                } else if (data.type === 'sources') {
+                                    sources = data.sources || [];
+                                } else if (data.type === 'complete') {
+                                    // Affichage des sources
+                                    if (sources.length > 0) {
+                                        const sourcesList = document.getElementById('sources-list');
+                                        sourcesList.innerHTML = sources.map(source => `
+                                            <div class="source-item">
+                                                <strong>📄 ${source.title || 'Document'}</strong><br>
+                                                <em>Section: ${source.section || 'N/A'}</em><br>
+                                                <em>Article: ${source.article || 'N/A'}</em><br>
+                                                <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                                                    ${source.content.substring(0, 200)}...
+                                                </div>
+                                                <div style="margin-top: 5px; color: #667eea; font-weight: 600;">
+                                                    Score: ${(source.similarity_score * 100).toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        `).join('');
+                                        sourcesEl.style.display = 'block';
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Erreur parsing JSON:', e);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                responseEl.innerHTML = `<div class="error">❌ Erreur: ${error.message}</div>`;
+                console.error('Erreur:', error);
+            } finally {
+                // Réactiver le bouton
+                askBtn.disabled = false;
+                askBtn.textContent = '🚀 Poser la question';
+            }
+        }
+
+        // Vérification de la santé au chargement
+        checkHealth();
+        
+        // Vérification périodique
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html>

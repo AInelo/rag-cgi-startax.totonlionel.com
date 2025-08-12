@@ -1,39 +1,42 @@
 # ==============================================================================
-# FILE: app/database/vector_store.py - Base de données vectorielle avec ChromaDB
+# FILE: app/database/vector_store.py - Base de données vectorielle ultra-légère avec scikit-learn
 # ==============================================================================
 
 import asyncio
 import logging
 import json
 import os
+import pickle
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import uuid
 
-import chromadb
-from chromadb.config import Settings
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
-    """Base de données vectorielle pour stocker les documents CGI"""
+    """Base de données vectorielle ultra-légère pour stocker les documents CGI"""
     
     def __init__(self, 
                  persist_directory: str = "./vector_db",
                  collection_name: str = "cgi_documents"):
         """
-        Initialize le vector store
+        Initialize le vector store ultra-léger
         
         Args:
             persist_directory: Répertoire de persistance
-            collection_name: Nom de la collection ChromaDB
+            collection_name: Nom de la collection
         """
         self.persist_directory = persist_directory
         self.collection_name = collection_name
-        self.client = None
-        self.collection = None
         self.is_initialized = False
+        
+        # Stockage en mémoire (plus rapide)
+        self.documents = {}  # id -> document
+        self.embeddings = []  # Liste des embeddings
+        self.document_ids = []  # Liste des IDs dans l'ordre
         
         # Métadonnées de la collection
         self.collection_metadata = {
@@ -44,7 +47,7 @@ class VectorStore:
         }
     
     async def initialize(self):
-        """Initialize ChromaDB client and collection"""
+        """Initialize le vector store ultra-léger"""
         if self.is_initialized:
             return
             
@@ -52,130 +55,64 @@ class VectorStore:
             # Créer le répertoire de persistance
             os.makedirs(self.persist_directory, exist_ok=True)
             
-            # Initialiser le client ChromaDB
-            self.client = chromadb.PersistentClient(
-                path=self.persist_directory,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-            )
+            # Charger les données existantes si elles existent
+            await self._load_data()
             
-            # Créer ou récupérer la collection
-            try:
-                self.collection = self.client.get_collection(
-                    name=self.collection_name
-                )
-                logger.info(f"📚 Collection existante récupérée: {self.collection_name}")
-                
-                # Charger les métadonnées
-                await self._load_metadata()
-                
-            except Exception:
-                # Créer une nouvelle collection
-                self.collection = self.client.create_collection(
-                    name=self.collection_name,
-                    metadata={
-                        "description": "Documents du Code Général des Impôts",
-                        "created_at": datetime.now().isoformat()
-                    }
-                )
-                logger.info(f"📚 Nouvelle collection créée: {self.collection_name}")
-                
-                # Initialiser les métadonnées
+            if not self.documents:
+                # Initialiser les métadonnées pour une nouvelle collection
                 self.collection_metadata = {
                     "created_at": datetime.now().isoformat(),
                     "last_updated": datetime.now().isoformat(),
                     "document_count": 0,
                     "total_tokens": 0
                 }
-                await self._save_metadata()
+                await self._save_data()
             
             self.is_initialized = True
-            logger.info("✅ Vector store initialisé avec succès")
+            logger.info("✅ Vector store ultra-léger initialisé avec succès")
             
         except Exception as e:
             logger.error(f"❌ Erreur initialisation vector store: {e}")
             raise
     
-    async def add_documents(self, documents: List[Dict[str, Any]], 
-                          embeddings: List[List[float]]):
+    async def add_documents(self, 
+                           documents: List[Dict[str, Any]], 
+                           embeddings: List[List[float]]):
         """
         Ajoute des documents avec leurs embeddings
         
         Args:
             documents: Liste des documents à ajouter
-            embeddings: Embeddings correspondants
+            embeddings: Liste des embeddings correspondants
         """
         if not self.is_initialized:
             await self.initialize()
         
-        if len(documents) != len(embeddings):
-            raise ValueError("Le nombre de documents doit correspondre au nombre d'embeddings")
-        
         try:
-            # Préparer les données pour ChromaDB
-            ids = []
-            metadatas = []
-            texts = []
-            
-            for i, (doc, embedding) in enumerate(zip(documents, embeddings)):
-                # ID unique pour chaque document
-                doc_id = doc.get('id', f"{uuid.uuid4()}")
-                ids.append(doc_id)
+            for doc, embedding in zip(documents, embeddings):
+                # Générer un ID unique
+                doc_id = str(uuid.uuid4())
                 
-                # Texte du document
-                texts.append(doc['content'])
-                
-                # Métadonnées
-                metadata = {
-                    'title': doc.get('title', ''),
-                    'section': doc.get('section', ''),
-                    'article': doc.get('article', ''),
-                    'source_file': doc.get('source_file', ''),
-                    'chunk_index': doc.get('chunk_index', i),
-                    'word_count': doc.get('word_count', 0),
-                    'char_count': doc.get('char_count', 0),
-                    'token_count': doc.get('token_count', 0),
-                    'type': doc.get('type', 'content'),
-                    'created_at': datetime.now().isoformat()
+                # Stocker le document
+                self.documents[doc_id] = {
+                    "id": doc_id,
+                    "content": doc["content"],
+                    "metadata": doc.get("metadata", {}),
+                    "created_at": datetime.now().isoformat()
                 }
                 
-                # Ajouter les métadonnées personnalisées s'il y en a
-                if 'metadata' in doc:
-                    metadata.update(doc['metadata'])
-                
-                metadatas.append(metadata)
-            
-            # Ajouter à la collection par batches
-            batch_size = 100
-            for i in range(0, len(documents), batch_size):
-                end_idx = min(i + batch_size, len(documents))
-                
-                batch_ids = ids[i:end_idx]
-                batch_texts = texts[i:end_idx]
-                batch_metadatas = metadatas[i:end_idx]
-                batch_embeddings = embeddings[i:end_idx]
-                
-                self.collection.add(
-                    ids=batch_ids,
-                    documents=batch_texts,
-                    metadatas=batch_metadatas,
-                    embeddings=batch_embeddings
-                )
-                
-                logger.info(f"📥 Batch {i//batch_size + 1} ajouté: {len(batch_ids)} documents")
+                # Stocker l'embedding
+                self.embeddings.append(embedding)
+                self.document_ids.append(doc_id)
             
             # Mettre à jour les métadonnées
-            self.collection_metadata['document_count'] += len(documents)
-            self.collection_metadata['total_tokens'] += sum(
-                doc.get('token_count', 0) for doc in documents
-            )
-            self.collection_metadata['last_updated'] = datetime.now().isoformat()
+            self.collection_metadata["document_count"] = len(self.documents)
+            self.collection_metadata["last_updated"] = datetime.now().isoformat()
             
-            await self._save_metadata()
+            # Sauvegarder
+            await self._save_data()
             
-            logger.info(f"✅ {len(documents)} documents ajoutés à la collection")
+            logger.info(f"✅ {len(documents)} documents ajoutés au vector store")
             
         except Exception as e:
             logger.error(f"❌ Erreur ajout documents: {e}")
@@ -185,257 +122,145 @@ class VectorStore:
                               top_k: int = 5,
                               filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Recherche par similarité vectorielle
+        Recherche de similarité avec l'embedding de la requête
         
         Args:
             query_embedding: Embedding de la requête
             top_k: Nombre de résultats à retourner
-            filter_criteria: Critères de filtrage optionnels
+            filter_criteria: Critères de filtrage (optionnel)
             
         Returns:
             Liste des documents les plus similaires
         """
-        if not self.is_initialized:
-            await self.initialize()
+        if not self.is_initialized or not self.embeddings:
+            return []
         
         try:
-            # Construire le filtre Where si spécifié
-            where_clause = None
-            if filter_criteria:
-                where_clause = {}
-                for key, value in filter_criteria.items():
-                    if value is not None:
-                        where_clause[key] = {"$eq": value}
+            # Convertir en arrays numpy
+            query_array = np.array(query_embedding).reshape(1, -1)
+            embeddings_array = np.array(self.embeddings)
             
-            # Effectuer la recherche
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=top_k,
-                where=where_clause,
-                include=['documents', 'metadatas', 'distances']
-            )
+            # Calculer les similarités cosinus
+            similarities = cosine_similarity(query_array, embeddings_array)[0]
             
-            # Traiter les résultats
-            formatted_results = []
+            # Créer la liste des résultats avec scores
+            results = []
+            for i, similarity in enumerate(similarities):
+                doc_id = self.document_ids[i]
+                document = self.documents[doc_id]
+                
+                # Appliquer les filtres si spécifiés
+                if filter_criteria and not self._matches_filter(document, filter_criteria):
+                    continue
+                
+                results.append({
+                    "id": doc_id,
+                    "content": document["content"],
+                    "metadata": document["metadata"],
+                    "similarity_score": float(similarity),
+                    "created_at": document["created_at"]
+                })
             
-            if results['ids'] and len(results['ids'][0]) > 0:
-                for i in range(len(results['ids'][0])):
-                    doc_id = results['ids'][0][i]
-                    document = results['documents'][0][i]
-                    metadata = results['metadatas'][0][i]
-                    distance = results['distances'][0][i]
-                    
-                    # Convertir la distance en score de similarité (0-1)
-                    similarity_score = max(0, 1 - distance)
-                    
-                    result = {
-                        'id': doc_id,
-                        'content': document,
-                        'similarity_score': round(similarity_score, 4),
-                        'distance': round(distance, 4),
-                        **metadata  # Ajouter toutes les métadonnées
-                    }
-                    
-                    formatted_results.append(result)
+            # Trier par score de similarité décroissant
+            results.sort(key=lambda x: x["similarity_score"], reverse=True)
             
-            logger.info(f"🔍 Recherche terminée: {len(formatted_results)} résultats")
-            return formatted_results
+            # Retourner les top_k résultats
+            return results[:top_k]
             
         except Exception as e:
             logger.error(f"❌ Erreur recherche similarité: {e}")
             return []
     
+    def _matches_filter(self, document: Dict[str, Any], filter_criteria: Dict[str, Any]) -> bool:
+        """Vérifie si un document correspond aux critères de filtrage"""
+        try:
+            for key, value in filter_criteria.items():
+                if key in document["metadata"]:
+                    if document["metadata"][key] != value:
+                        return False
+                else:
+                    return False
+            return True
+        except Exception:
+            return False
+    
     async def get_document_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:
         """Récupère un document par son ID"""
         if not self.is_initialized:
-            await self.initialize()
+            return None
         
-        try:
-            results = self.collection.get(
-                ids=[doc_id],
-                include=['documents', 'metadatas']
-            )
-            
-            if results['ids'] and len(results['ids']) > 0:
-                return {
-                    'id': results['ids'][0],
-                    'content': results['documents'][0],
-                    **results['metadatas'][0]
-                }
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération document {doc_id}: {e}")
-            return None
+        return self.documents.get(doc_id)
     
     async def delete_document(self, doc_id: str) -> bool:
-        """Supprime un document par son ID"""
-        if not self.is_initialized:
-            await self.initialize()
+        """Supprime un document"""
+        if not self.is_initialized or doc_id not in self.documents:
+            return False
         
         try:
-            self.collection.delete(ids=[doc_id])
+            # Trouver l'index de l'embedding
+            if doc_id in self.document_ids:
+                idx = self.document_ids.index(doc_id)
+                self.embeddings.pop(idx)
+                self.document_ids.pop(idx)
+            
+            # Supprimer le document
+            del self.documents[doc_id]
             
             # Mettre à jour les métadonnées
-            self.collection_metadata['document_count'] = max(0, self.collection_metadata['document_count'] - 1)
-            self.collection_metadata['last_updated'] = datetime.now().isoformat()
-            await self._save_metadata()
+            self.collection_metadata["document_count"] = len(self.documents)
+            self.collection_metadata["last_updated"] = datetime.now().isoformat()
             
-            logger.info(f"🗑️ Document supprimé: {doc_id}")
+            await self._save_data()
             return True
             
         except Exception as e:
-            logger.error(f"❌ Erreur suppression document {doc_id}: {e}")
+            logger.error(f"❌ Erreur suppression document: {e}")
             return False
-    
-    async def update_document(self, doc_id: str, new_content: str, 
-                            new_embedding: List[float], 
-                            new_metadata: Optional[Dict[str, Any]] = None) -> bool:
-        """Met à jour un document existant"""
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            # ChromaDB ne supporte pas la mise à jour directe
-            # On supprime et on ajoute à nouveau
-            await self.delete_document(doc_id)
-            
-            # Préparer les nouvelles données
-            documents = [{
-                'id': doc_id,
-                'content': new_content,
-                'metadata': new_metadata or {}
-            }]
-            
-            await self.add_documents(documents, [new_embedding])
-            
-            logger.info(f"✏️ Document mis à jour: {doc_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur mise à jour document {doc_id}: {e}")
-            return False
-    
-    async def search_by_metadata(self, metadata_filter: Dict[str, Any], 
-                               limit: int = 10) -> List[Dict[str, Any]]:
-        """Recherche par métadonnées uniquement"""
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            where_clause = {}
-            for key, value in metadata_filter.items():
-                if value is not None:
-                    if isinstance(value, str):
-                        where_clause[key] = {"$eq": value}
-                    elif isinstance(value, list):
-                        where_clause[key] = {"$in": value}
-                    else:
-                        where_clause[key] = {"$eq": value}
-            
-            results = self.collection.get(
-                where=where_clause,
-                limit=limit,
-                include=['documents', 'metadatas']
-            )
-            
-            formatted_results = []
-            if results['ids']:
-                for i in range(len(results['ids'])):
-                    result = {
-                        'id': results['ids'][i],
-                        'content': results['documents'][i],
-                        **results['metadatas'][i]
-                    }
-                    formatted_results.append(result)
-            
-            return formatted_results
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur recherche par métadonnées: {e}")
-            return []
     
     async def get_document_count(self) -> int:
-        """Retourne le nombre de documents dans la collection"""
-        if not self.is_initialized:
-            await self.initialize()
-        
-        try:
-            return self.collection.count()
-        except Exception as e:
-            logger.error(f"❌ Erreur comptage documents: {e}")
-            return 0
+        """Retourne le nombre de documents"""
+        return len(self.documents) if self.is_initialized else 0
     
     async def has_documents(self) -> bool:
-        """Vérifie s'il y a des documents dans la collection"""
-        count = await self.get_document_count()
-        return count > 0
+        """Vérifie s'il y a des documents"""
+        return len(self.documents) > 0 if self.is_initialized else False
     
     async def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques de la collection"""
+        """Retourne les statistiques du vector store"""
         if not self.is_initialized:
-            await self.initialize()
+            return {}
         
+        return {
+            "collection_name": self.collection_name,
+            "document_count": len(self.documents),
+            "embedding_count": len(self.embeddings),
+            "embedding_dimension": len(self.embeddings[0]) if self.embeddings else 0,
+            "metadata": self.collection_metadata,
+            "storage_size_mb": await self._get_storage_size()
+        }
+    
+    async def _get_storage_size(self) -> float:
+        """Calcule la taille de stockage en MB"""
         try:
-            count = await self.get_document_count()
+            total_size = 0
+            for doc in self.documents.values():
+                total_size += len(str(doc))
+            for emb in self.embeddings:
+                total_size += len(emb) * 8  # 8 bytes par float64
             
-            # Obtenir quelques échantillons pour les stats
-            sample_results = self.collection.get(
-                limit=10,
-                include=['metadatas']
-            )
-            
-            # Calculer des statistiques sur les métadonnées
-            stats = {
-                'total_documents': count,
-                'collection_metadata': self.collection_metadata,
-                'sample_metadata': sample_results.get('metadatas', [])[:3],
-                'collection_name': self.collection_name,
-                'persist_directory': self.persist_directory
-            }
-            
-            # Statistiques par type si disponible
-            if sample_results.get('metadatas'):
-                types = {}
-                sources = {}
-                
-                for metadata in sample_results['metadatas']:
-                    doc_type = metadata.get('type', 'unknown')
-                    source_file = metadata.get('source_file', 'unknown')
-                    
-                    types[doc_type] = types.get(doc_type, 0) + 1
-                    sources[source_file] = sources.get(source_file, 0) + 1
-                
-                stats['document_types'] = types
-                stats['source_files'] = sources
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération statistiques: {e}")
-            return {
-                'total_documents': 0,
-                'error': str(e)
-            }
+            return round(total_size / (1024 * 1024), 2)
+        except Exception:
+            return 0.0
     
     async def clear(self):
-        """Vide complètement la collection"""
+        """Vide complètement le vector store"""
         if not self.is_initialized:
-            await self.initialize()
+            return
         
         try:
-            # Supprimer la collection
-            self.client.delete_collection(name=self.collection_name)
-            
-            # Recréer une collection vide
-            self.collection = self.client.create_collection(
-                name=self.collection_name,
-                metadata={
-                    "description": "Documents du Code Général des Impôts",
-                    "created_at": datetime.now().isoformat()
-                }
-            )
+            self.documents.clear()
+            self.embeddings.clear()
+            self.document_ids.clear()
             
             # Réinitialiser les métadonnées
             self.collection_metadata = {
@@ -445,60 +270,67 @@ class VectorStore:
                 "total_tokens": 0
             }
             
-            await self._save_metadata()
-            
-            logger.info("🧹 Collection vidée avec succès")
+            await self._save_data()
+            logger.info("🗑️ Vector store vidé")
             
         except Exception as e:
-            logger.error(f"❌ Erreur vidage collection: {e}")
-            raise
+            logger.error(f"❌ Erreur vidage vector store: {e}")
+    
+    async def _save_data(self):
+        """Sauvegarde les données sur disque"""
+        try:
+            data = {
+                "documents": self.documents,
+                "embeddings": self.embeddings,
+                "document_ids": self.document_ids,
+                "metadata": self.collection_metadata
+            }
+            
+            filepath = os.path.join(self.persist_directory, f"{self.collection_name}.pkl")
+            with open(filepath, 'wb') as f:
+                pickle.dump(data, f)
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde données: {e}")
+    
+    async def _load_data(self):
+        """Charge les données depuis le disque"""
+        try:
+            filepath = os.path.join(self.persist_directory, f"{self.collection_name}.pkl")
+            if os.path.exists(filepath):
+                with open(filepath, 'rb') as f:
+                    data = pickle.load(f)
+                
+                self.documents = data.get("documents", {})
+                self.embeddings = data.get("embeddings", [])
+                self.document_ids = data.get("document_ids", [])
+                self.collection_metadata = data.get("metadata", self.collection_metadata)
+                
+                logger.info(f"📚 Données chargées: {len(self.documents)} documents")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de charger les données existantes: {e}")
+            # Initialiser avec des valeurs par défaut
+            self.documents = {}
+            self.embeddings = []
+            self.document_ids = []
     
     async def save_indexing_stats(self, stats: Dict[str, Any]):
-        """Sauvegarde les statistiques d'indexation"""
-        stats_file = os.path.join(self.persist_directory, "indexing_stats.json")
-        
+        """Sauvegarde les statistiques d'indexation (compatibilité)"""
         try:
-            with open(stats_file, 'w', encoding='utf-8') as f:
-                json.dump(stats, f, indent=2, ensure_ascii=False)
-                
-            logger.info(f"📊 Statistiques d'indexation sauvegardées: {stats_file}")
+            # Mettre à jour les métadonnées avec les stats
+            if "total_chunks" in stats:
+                self.collection_metadata["total_tokens"] = stats.get("total_chunks", 0)
             
+            await self._save_data()
+            logger.info("📊 Statistiques d'indexation sauvegardées")
         except Exception as e:
             logger.warning(f"⚠️ Erreur sauvegarde statistiques: {e}")
     
-    async def _load_metadata(self):
-        """Charge les métadonnées de la collection"""
-        metadata_file = os.path.join(self.persist_directory, f"{self.collection_name}_metadata.json")
-        
-        if os.path.exists(metadata_file):
-            try:
-                with open(metadata_file, 'r', encoding='utf-8') as f:
-                    self.collection_metadata = json.load(f)
-                logger.info("📋 Métadonnées de collection chargées")
-            except Exception as e:
-                logger.warning(f"⚠️ Erreur chargement métadonnées: {e}")
-    
-    async def _save_metadata(self):
-        """Sauvegarde les métadonnées de la collection"""
-        metadata_file = os.path.join(self.persist_directory, f"{self.collection_name}_metadata.json")
-        
-        try:
-            with open(metadata_file, 'w', encoding='utf-8') as f:
-                json.dump(self.collection_metadata, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.warning(f"⚠️ Erreur sauvegarde métadonnées: {e}")
-    
     async def cleanup(self):
-        """Nettoyage des ressources"""
-        logger.info("🧹 Nettoyage du vector store...")
-        
-        # Sauvegarder les métadonnées finales
-        if self.collection_metadata:
-            await self._save_metadata()
-        
-        # ChromaDB gère automatiquement la persistance
-        self.client = None
-        self.collection = None
-        self.is_initialized = False
-        
-        logger.info("✅ Nettoyage vector store terminé")
+        """Nettoie les ressources"""
+        try:
+            await self._save_data()
+            logger.info("🧹 Vector store nettoyé")
+        except Exception as e:
+            logger.error(f"❌ Erreur nettoyage: {e}")
