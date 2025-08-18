@@ -14,5 +14,3 @@ services:
     # Pas d'env_file pour le build
     # Pas de restart policy pour le build
     # Commande par défaut du Dockerfile sera utilisée
-    profiles:
-      - build-only
