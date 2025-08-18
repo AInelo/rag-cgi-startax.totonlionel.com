@@ -332,7 +332,8 @@ class RAGService:
     async def generate_response_stream(self, question: str, 
                                      sources: List[DocumentSource],
                                      temperature: float = 0.3,
-                                     max_tokens: int = 1000) -> AsyncGenerator[Dict[str, Any], None]:
+                                     max_tokens: int = 1000,
+                                     personnalite: str = "expert_cgi") -> AsyncGenerator[Dict[str, Any], None]:
         """
         Génère une réponse streamée basée sur les sources trouvées
         
@@ -363,7 +364,8 @@ class RAGService:
                 context_documents=[{"content": context, "source": "CGI_Benin", "score": 1.0}],
                 system_prompt=system_prompt,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                personnalite=personnalite
             ):
                 yield chunk
                     

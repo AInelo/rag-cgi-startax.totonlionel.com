@@ -1,1 +1,59 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+
+# =========================
+# Environnements & outils
+# =========================
 .env
+.venv/
+venv/
+ENV/
+*.log
+*.pot
+
+# =========================
+# VSCode / IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+
+# =========================
+# Données / caches
+# =========================
+*.db
+*.sqlite3
+*.pkl
+*.pickle
+
+# Vector DB
+vector_db/
+
+# =========================
+# Config sensibles
+# =========================
+app/config/*.py        # si ce sont des fichiers sensibles (mot de passe, API key)
+!app/config/__init__.py  # garde le fichier d'init vide
+*.secret
+*.key
+*.pem
+
+# =========================
+# Docker
+# =========================
+*.pid
+*.seed
+*.bak
+*.tmp
+*.log
+*.tar
+*.lock

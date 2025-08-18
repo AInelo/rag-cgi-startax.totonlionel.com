@@ -1,0 +1,1 @@
+# Configuration des personnalités du chatbot RAG CGI 

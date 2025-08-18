@@ -96,7 +96,8 @@ class GeminiLLMService:
                                      conversation_history: Optional[List[Dict]] = None,
                                      system_prompt: Optional[str] = None,
                                      temperature: float = 0.3,
-                                     max_tokens: int = 1000) -> AsyncGenerator[Dict[str, Any], None]:
+                                     max_tokens: int = 1000,
+                                     personnalite: str = "expert_cgi") -> AsyncGenerator[Dict[str, Any], None]:
         """
         Génère une réponse streamée en utilisant Gemini avec contexte RAG
         
@@ -119,7 +120,8 @@ class GeminiLLMService:
                 user_query=prompt,
                 context_documents=context_documents,
                 conversation_history=conversation_history,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                personnalite=personnalite
             )
             
             # Génération avec Gemini en mode streaming
@@ -174,7 +176,8 @@ class GeminiLLMService:
                          prompt: str, 
                          context_documents: Optional[List[Dict]] = None,
                          conversation_history: Optional[List[Dict]] = None,
-                         system_prompt: Optional[str] = None) -> GeminiResponse:
+                         system_prompt: Optional[str] = None,
+                         personnalite: str = "expert_cgi") -> GeminiResponse:
         """
         Génère une réponse en utilisant Gemini avec contexte RAG
         
@@ -195,7 +198,8 @@ class GeminiLLMService:
                 user_query=prompt,
                 context_documents=context_documents,
                 conversation_history=conversation_history,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                personnalite="expert_cgi"  # Par défaut pour la méthode non-streamée
             )
             
             # Génération avec Gemini
@@ -237,13 +241,21 @@ class GeminiLLMService:
                          user_query: str,
                          context_documents: Optional[List[Dict]] = None,
                          conversation_history: Optional[List[Dict]] = None,
-                         system_prompt: Optional[str] = None) -> str:
+                         system_prompt: Optional[str] = None,
+                         personnalite: str = "expert_cgi") -> str:
         """
         Construit le prompt spécialisé pour les questions fiscales CGI du Bénin
+        avec support des personnalités
         """
         
-        # Prompt système par défaut pour le contexte fiscal
-        default_system_prompt = """Tu es un assistant expert en fiscalité béninoise, spécialisé dans le Code Général des Impôts (CGI) du Bénin 2025.
+        # Import du service de personnalités
+        try:
+            from app.services.personnalite_service import PersonnaliteService
+            personnalite_service = PersonnaliteService()
+            default_system_prompt = personnalite_service.get_prompt_system(personnalite)
+        except ImportError:
+            # Fallback si le service n'est pas disponible
+            default_system_prompt = """Tu es un assistant expert en fiscalité béninoise, spécialisé dans le Code Général des Impôts (CGI) du Bénin 2025.
 
 EXPERTISE:
 - Code Général des Impôts du Bénin 2025

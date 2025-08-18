@@ -116,6 +116,14 @@ async def get_interface():
                 </select>
                 
                 <br><br>
+                <label>Personnalité du chatbot:</label>
+                <select id="personnalite">
+                    <option value="expert">🧠 Expert - Réponses courtes</option>
+                    <option value="expert_cgi" selected>🏛️ Expert CGI - Réponses détaillées</option>
+                    <option value="mathematicien">🧮 Mathématicien - Formules KaTeX</option>
+                </select>
+                
+                <br><br>
                 <label>Nombre de sources max:</label>
                 <input type="number" id="max_sources" value="3" min="1" max="10">
                 
@@ -159,9 +167,10 @@ async def get_interface():
                 // Paramètres
                 const contextType = document.getElementById('context_type').value;
                 const maxSources = document.getElementById('max_sources').value;
+                const personnalite = document.getElementById('personnalite').value;
 
                 // URL avec paramètres
-                const url = `/query/stream?question=${encodeURIComponent(question)}&context_type=${contextType}&max_sources=${maxSources}`;
+                const url = `/query/stream?question=${encodeURIComponent(question)}&context_type=${contextType}&max_sources=${maxSources}&personnalite=${personnalite}`;
 
                 // Créer EventSource
                 eventSource = new EventSource(url);
@@ -258,7 +267,8 @@ async def get_interface():
 async def stream_query(
     question: str = Query(..., description="Question à poser au CGI"),
     context_type: str = Query("general", description="Type de contexte"),
-    max_sources: int = Query(3, ge=1, le=10, description="Nombre max de sources")
+    max_sources: int = Query(3, ge=1, le=10, description="Nombre max de sources"),
+    personnalite: str = Query("expert_cgi", description="Personnalité du chatbot")
 ):
     """Endpoint de streaming pour les requêtes RAG"""
     
@@ -285,7 +295,13 @@ async def stream_query(
             response_content = ""
             tokens_used = 0
             
-            async for chunk in rag_service.generate_response_stream(question, sources):
+            async for chunk in rag_service.generate_response_stream(
+                question, 
+                sources, 
+                temperature=0.3, 
+                max_tokens=1000, 
+                personnalite=personnalite
+            ):
                 if chunk.get('content'):
                     response_content += chunk['content']
                     tokens_used += chunk.get('tokens', 0)
@@ -342,7 +358,13 @@ async def query_cgi(request: QueryRequest):
         response_content = ""
         tokens_used = 0
         
-        async for chunk in rag_service.generate_response_stream(request.question, sources):
+        async for chunk in rag_service.generate_response_stream(
+            request.question, 
+            sources, 
+            request.temperature, 
+            1000, 
+            request.personnalite
+        ):
             if chunk.get('content'):
                 response_content += chunk['content']
                 tokens_used += chunk.get('tokens', 0)
@@ -392,6 +414,23 @@ async def get_stats():
         raise HTTPException(status_code=503, detail="Service RAG non initialisé")
     
     return await rag_service.get_stats()
+
+@app.get("/personnalites")
+async def get_personnalites():
+    """Informations sur les personnalités disponibles du chatbot"""
+    try:
+        from app.services.personnalite_service import PersonnaliteService
+        personnalite_service = PersonnaliteService()
+        return personnalite_service.get_personnalite_info()
+    except ImportError:
+        return {
+            "error": "Service de personnalités non disponible",
+            "personnalites": {
+                "expert": "Expert Fiscal - Réponses courtes",
+                "expert_cgi": "Expert CGI - Réponses détaillées",
+                "mathematicien": "Mathématicien - Formules mathématiques"
+            }
+        }
 
 @app.post("/reindex")
 async def reindex_documents():

@@ -7,6 +7,7 @@ class QueryRequest(BaseModel):
     context_type: str = Field("general", pattern="^(general|particulier|entreprise|fiscal)$")
     max_sources: int = Field(3, ge=1, le=10, description="Nombre max de sources")
     temperature: float = Field(0.3, ge=0.0, le=1.0, description="Créativité de la réponse")
+    personnalite: str = Field("expert_cgi", pattern="^(expert|expert_cgi|mathematicien)$", description="Personnalité du chatbot")
 
 class SourceInfo(BaseModel):
     title: str
