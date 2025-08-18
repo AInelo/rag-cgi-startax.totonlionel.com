@@ -254,10 +254,11 @@ class RAGService:
             question_embedding = await self.embedding_service.get_embedding(question)
             
             # Rechercher dans la base vectorielle
+            # Ne pas filtrer par context_type car ce champ n'existe pas dans les métadonnées
             results = await self.vector_store.similarity_search(
                 question_embedding, 
                 top_k=max_sources * 2,  # Récupérer plus pour filtrer
-                filter_criteria={"context_type": context_type} if context_type != "general" else None
+                filter_criteria=None  # Pas de filtrage strict, on utilise le re-scoring contextuel
             )
             
             # Convertir en objets DocumentSource
@@ -302,9 +303,9 @@ class RAGService:
         
         # Mots-clés par contexte pour améliorer la pertinence
         context_keywords = {
-            "particulier": ["revenus", "déclaration", "impôt sur le revenu", "déduction", "crédit d'impôt", "foyer fiscal"],
-            "entreprise": ["bénéfices", "TVA", "IS", "impôt sur les sociétés", "déduction", "amortissement", "charges"],
-            "fiscal": ["taux", "barème", "calcul", "assiette", "exonération", "régime fiscal"]
+            "particulier": ["revenus", "déclaration", "impôt sur le revenu", "déduction", "crédit d'impôt", "foyer fiscal", "particulier", "personne physique"],
+            "entreprise": ["bénéfices", "TVA", "IS", "impôt sur les sociétés", "déduction", "amortissement", "charges", "entreprise", "société", "commercial"],
+            "fiscal": ["taux", "barème", "calcul", "assiette", "exonération", "régime fiscal", "impôt", "taxe", "fiscal", "fiscale"]
         }
         
         keywords = context_keywords.get(context_type, [])
