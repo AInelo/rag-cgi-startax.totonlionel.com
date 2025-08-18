@@ -1,4 +1,4 @@
-name: 🚀 PCI APP BACKEND
+name: 🚀 RAG CGI API DEPLOY
 
 on:
   push:
@@ -30,23 +30,16 @@ jobs:
           chmod +x scripts/build_push_docker_img.sh
           ./scripts/build_push_docker_img.sh
 
-      - name: 🚀 Deploy backend by the pull_docker_img_executor.sh we execute the pull_docker_img.sh
+      - name: 🚀 Deploy RAG CGI API by the pull_docker_img_executor.sh we execute the pull_docker_img.sh
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-
-          MONGO_URL: ${{ secrets.MONGO_URL }}
-          MONGO_DB_NAME: ${{ secrets.MONGO_DB_NAME }}
-
-          EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          DEFAULT_MODEL: ${{ secrets.DEFAULT_MODEL }}
+          TEMPERATURE: ${{ secrets.TEMPERATURE }}
+          MAX_TOKENS: ${{ secrets.MAX_TOKENS }}
+          MAX_SOURCES: ${{ secrets.MAX_SOURCES }}
+          
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          VECTOR_STORE_TYPE: ${{ secrets.VECTOR_STORE_TYPE }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
         run: |
           chmod +x scripts/pull_docker_img_executor.sh
           ./scripts/pull_docker_img_executor.sh key.pem

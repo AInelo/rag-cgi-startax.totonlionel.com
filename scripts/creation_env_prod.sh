@@ -1,15 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "📦 Génération du fichier .env.prod à partir des variables d’environnement..."
+echo "📦 Génération du fichier .env.prod à partir des variables d'environnement..."
 
 # === ✅ Vérification explicite de chaque variable ===
 
 required_vars=(
-  DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME
-  MONGO_URL MONGO_DB_NAME
-  EMAIL_HOST EMAIL_USER EMAIL_PASS
-  JWT_SECRET FRONTEND_URL
+  DEFAULT_MODEL
+  DOCKERHUB_TOKEN
+  DOCKERHUB_USERNAME
+  ENVIRONMENT
+  GOOGLE_API_KEY
+  IP_SERVEUR
+  MAX_SOURCES
+  MAX_TOKENS
+  SSH_SERVEUR
+  TEMPERATURE
+  VECTOR_STORE_TYPE
 )
 
 for var in "${required_vars[@]}"; do
@@ -22,33 +29,27 @@ done
 # === ✅ Génération du fichier ===
 
 cat <<EOL > .env.prod
-# ==== MySQL ====
-DB_HOST=$DB_HOST
-DB_PORT=$DB_PORT
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASSWORD
-DB_NAME=$DB_NAME
+# ==== RAG Configuration ====
+DEFAULT_MODEL=$DEFAULT_MODEL
+TEMPERATURE=$TEMPERATURE
+MAX_TOKENS=$MAX_TOKENS
+MAX_SOURCES=$MAX_SOURCES
 
-# ==== MongoDB ====
-MONGO_URL=$MONGO_URL
-MONGO_DB_NAME=$MONGO_DB_NAME
+# ==== Google API ====
+GOOGLE_API_KEY=$GOOGLE_API_KEY
 
-# ==== Email ====
-EMAIL_HOST=$EMAIL_HOST
-EMAIL_USER=$EMAIL_USER
-EMAIL_PASS=$EMAIL_PASS
-EMAIL_PORT=465
-EMAIL_SECURE=true
+# ==== Vector Store ====
+VECTOR_STORE_TYPE=$VECTOR_STORE_TYPE
 
-# ==== Auth ====
-JWT_SECRET=$JWT_SECRET
-JWT_EXPIRES_IN=7d
+# ==== Application ====
+ENVIRONMENT=$ENVIRONMENT
+PORT=8000
 
-# ==== Frontend ====
-FRONTEND_URL=$FRONTEND_URL
+# ==== Docker Hub (pour référence) ====
+DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME
 
-# ==== App ====
-PORT=5002
+# ==== Serveur (pour référence) ====
+IP_SERVEUR=$IP_SERVEUR
 EOL
 
 echo "✅ Fichier .env.prod créé avec succès."

@@ -16,7 +16,7 @@ VPS_SSH_KEY="${SSH_SERVEUR:?VARIABLE SSH_SERVEUR NON DEFINIE}"
 NETWORK_NAME="urmapha-network"
 
 # 📄 Nom du fichier docker-compose de build dans le runner de la CI/CD
-BUILD_COMPOSE_FILE="backend-pci-app-docker-compose.build.yml"
+BUILD_COMPOSE_FILE="rag-cgi-startax-docker-compose.build.yml"
 
 
 # 🔧 Création du réseau externe s’il n’existe pas

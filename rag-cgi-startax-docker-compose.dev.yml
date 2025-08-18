@@ -24,4 +24,4 @@ volumes:
 
 networks:
   default:
-    name: rag-cgi-simple-network 
+    name: startax_network 

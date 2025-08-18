@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  # Service principal RAG CGI API - Production
+  rag-cgi-api:
+    image: rag-cgi-api:latest  # Utilise l'image pré-buildée
+    ports:
+      - "8080:8000"  # Exposé directement sur le port 8080
+    volumes:
+      - ./data:/app/data
+      - vector_db_prod:/app/vector_db
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - VECTOR_STORE_TYPE=sklearn
+    restart: unless-stopped
+
+volumes:
+  vector_db_prod:
+
+networks:
+  default:
+    name: startax_network
