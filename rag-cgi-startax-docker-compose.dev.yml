@@ -1,31 +1,27 @@
-
 version: '3.8'
 
 services:
+  # Service principal RAG CGI API - exposé directement
   rag-cgi-api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.simple
     ports:
-      - "8000:8000"
+      - "8080:8000"  # Exposé directement sur le port 8080
     volumes:
       - ./data:/app/data
       - ./vector_db:/app/vector_db
+    env_file:
+      - .env
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
+      - ENVIRONMENT=production
+      - VECTOR_STORE_TYPE=sklearn
     restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 volumes:
-  redis_data:
+  vector_db:
+
+networks:
+  default:
+    name: rag-cgi-simple-network 
