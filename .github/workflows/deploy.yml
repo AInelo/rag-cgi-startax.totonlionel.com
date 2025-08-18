@@ -32,14 +32,18 @@ jobs:
 
       - name: 🚀 Deploy RAG CGI API by the pull_docker_img_executor.sh we execute the pull_docker_img.sh
         env:
-          DEFAULT_MODEL: ${{ secrets.DEFAULT_MODEL }}
-          TEMPERATURE: ${{ secrets.TEMPERATURE }}
-          MAX_TOKENS: ${{ secrets.MAX_TOKENS }}
-          MAX_SOURCES: ${{ secrets.MAX_SOURCES }}
-          
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          VECTOR_STORE_TYPE: ${{ secrets.VECTOR_STORE_TYPE }}
-          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+           # Variables existantes
+            DEFAULT_MODEL: ${{ secrets.DEFAULT_MODEL }}
+            TEMPERATURE: ${{ secrets.TEMPERATURE }}
+            MAX_TOKENS: ${{ secrets.MAX_TOKENS }}
+            MAX_SOURCES: ${{ secrets.MAX_SOURCES }}
+            GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+            VECTOR_STORE_TYPE: ${{ secrets.VECTOR_STORE_TYPE }}
+            ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+            
+            # Variables manquantes à ajouter :
+            IP_SERVEUR: ${{ secrets.IP_SERVEUR }}
+            SSH_SERVEUR: ${{ secrets.SSH_SERVEUR }}
         run: |
           chmod +x scripts/pull_docker_img_executor.sh
           ./scripts/pull_docker_img_executor.sh key.pem
