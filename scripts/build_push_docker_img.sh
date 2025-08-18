@@ -37,7 +37,9 @@ docker compose -f "$BUILD_COMPOSE_FILE" build
 
 # 🏷️ Tag avec l’identifiant Docker Hub
 FULL_IMAGE_NAME="$DOCKER_USERNAME/$IMAGE_NAME:$TAG"
-docker tag "$IMAGE_NAME:$TAG" "$FULL_IMAGE_NAME"
+# docker tag "$IMAGE_NAME:$TAG" "$FULL_IMAGE_NAME"
+docker tag "$(docker compose -f "$BUILD_COMPOSE_FILE" config --services | head -1):latest" "$FULL_IMAGE_NAME"
+
 
 # 🔐 Connexion Docker Hub (non interactive)
 echo "🔐 Connexion à Docker Hub..."
