@@ -2,7 +2,7 @@
 set -e
 
 # 💡 Infos de l'image
-IMAGE_NAME="backend-pci-app"
+IMAGE_NAME="rag-cgi-api"
 TAG="latest"
 DOCKER_USERNAME="${DOCKERHUB_USERNAME:?VARIABLE DOCKERHUB_USERNAME NON DEFINIE}"
 DOCKER_TOKEN="${DOCKERHUB_TOKEN:?VARIABLE DOCKERHUB_TOKEN NON DEFINIE}"
@@ -13,7 +13,7 @@ VPS_HOST="${IP_SERVEUR:?VARIABLE IP_SERVEUR NON DEFINIE}"
 VPS_SSH_KEY="${SSH_SERVEUR:?VARIABLE SSH_SERVEUR NON DEFINIE}"
 
 # 🌐 Nom du réseau Docker externe
-NETWORK_NAME="urmapha-network"
+NETWORK_NAME="startax-network"
 
 # 📄 Nom du fichier docker-compose de build dans le runner de la CI/CD
 BUILD_COMPOSE_FILE="rag-cgi-startax-docker-compose.build.yml"
