@@ -8,9 +8,9 @@ DOCKER_TOKEN="${DOCKERHUB_TOKEN:?}"
 
 
 # Vérification des variables d'environnement
-DEPLOY_REPO="git@github.com:urmapha-uac/urmapha-deploy.git"
-DEPLOY_DIR="urmapha-deploy"
-IMAGE_NAME="backend-pci-app"
+DEPLOY_REPO="git@github.com:urmapha-uac/startax-deploy.git"
+DEPLOY_DIR="startax-deploy"
+IMAGE_NAME="rag-cgi-api"
 TAG="latest"
 FULL_IMAGE="$DOCKER_USERNAME/$IMAGE_NAME:$TAG"
 PROD_COMPOSE_FILE="rag-cgi-startax-docker-compose.prod.yml"
