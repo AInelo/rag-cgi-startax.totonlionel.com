@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, AsyncGenerator
 import uuid
 
-from app.services.llm_service import LLMService
+from app.services.llm_service_gemini import GeminiLLMService, create_gemini_service
 from app.services.embedding_service import EmbeddingService
 from app.database.vector_store import VectorStore
 from app.utils.markdown_parser import MarkdownParser
@@ -47,10 +47,29 @@ class RAGService:
         Service RAG pour le Code Général des Impôts
         
         Args:
-            api_key: Clé API Hugging Face (HF_TOKEN)
+            api_key: Clé API Google AI Studio (GOOGLE_API_KEY)
         """
-        self.api_key = api_key or os.getenv("HF_TOKEN", "")
-        self.llm_service = LLMService(self.api_key)
+        # Utiliser la clé Google AI Studio pour Gemini
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY", "")
+        if not self.api_key:
+            logger.warning("⚠️ Aucune clé API Google AI Studio trouvée. Le service LLM ne fonctionnera pas.")
+        
+        # Configuration du service LLM Gemini
+        llm_config = {
+            'api_key': self.api_key,
+            'model_name': 'gemini-2.0-flash',  # Modèle gratuit par défaut
+            'temperature': 0.3,  # Température basse pour des réponses fiscales précises
+            'max_output_tokens': 2048
+        }
+        
+        # Initialiser directement le service Gemini
+        try:
+            self.llm_service = create_gemini_service(llm_config)
+            logger.info(f"✅ Service LLM Gemini initialisé: {llm_config['model_name']}")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation Gemini: {e}")
+            self.llm_service = None
+        
         self.embedding_service = EmbeddingService(self.api_key)
         self.vector_store = VectorStore()
         self.markdown_parser = MarkdownParser()
@@ -71,6 +90,19 @@ class RAGService:
             # Initialiser les composants
             # Le service d'embeddings est maintenant initialisé automatiquement
             await self.vector_store.initialize()
+            
+            # Vérifier que le service LLM est fonctionnel
+            if self.llm_service:
+                try:
+                    health_check = self.llm_service.health_check()
+                    if health_check.get("status") == "healthy":
+                        logger.info(f"✅ Service LLM Gemini opérationnel: {health_check.get('model')}")
+                    else:
+                        logger.warning(f"⚠️ Service LLM en état dégradé: {health_check}")
+                except Exception as e:
+                    logger.error(f"❌ Erreur vérification service LLM: {e}")
+            else:
+                logger.error("❌ Service LLM Gemini non initialisé")
             
             self.is_initialized = True
             logger.info("✅ Service RAG initialisé avec succès")
@@ -296,7 +328,7 @@ class RAGService:
         sources.sort(key=lambda s: s.relevance_score, reverse=True)
         return sources
     
-    async def generate_response_stream(self, question: str,
+    async def generate_response_stream(self, question: str, 
                                      sources: List[DocumentSource],
                                      temperature: float = 0.3,
                                      max_tokens: int = 1000) -> AsyncGenerator[Dict[str, Any], None]:
@@ -313,36 +345,22 @@ class RAGService:
             Chunks de réponse avec métadonnées
         """
         try:
+            # Vérifier que le service LLM est disponible
+            if not self.llm_service:
+                yield {"error": "Service LLM Gemini non disponible", "complete": True}
+                return
+            
             # Construire le contexte à partir des sources
             context = self._build_context_from_sources(sources)
             
             # Créer le prompt système
             system_prompt = self._create_system_prompt()
             
-            # Créer le prompt utilisateur avec contexte
-            user_prompt = f"""
-Contexte juridique (Code Général des Impôts):
-{context}
-
-Question de l'utilisateur:
-{question}
-
-Consignes:
-1. Réponds de manière précise en te basant UNIQUEMENT sur le contexte fourni
-2. Cite les articles et sections pertinents
-3. Si l'information n'est pas dans le contexte, dis-le clairement
-4. Structure ta réponse de manière claire et professionnelle
-5. Utilise un langage accessible tout en restant juridiquement exact
-"""
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            # Générer la réponse avec le vrai LLM Microsoft Phi-4
+            # Utiliser directement le service Gemini
             async for chunk in self.llm_service.generate_response_stream(
-                messages=messages,
+                prompt=question,
+                context_documents=[{"content": context, "source": "CGI_Benin", "score": 1.0}],
+                system_prompt=system_prompt,
                 temperature=temperature,
                 max_tokens=max_tokens
             ):
@@ -414,7 +432,9 @@ Score de pertinence: {source.relevance_score:.2f}
     
     def _create_system_prompt(self) -> str:
         """Crée le prompt système pour le LLM"""
-        return """Tu es un assistant expert en droit fiscal français, spécialisé dans le Code Général des Impôts (CGI).
+        return """Tu es un assistant expert en droit fiscal béninois, spécialisé dans le Code Général des Impôts (CGI) du Bénin.
+
+IMPORTANT: Tu traites UNIQUEMENT du Code Général des Impôts de la République du Bénin, pas de la France ni d'autres pays.
 
 Tes responsabilités:
 - Fournir des réponses précises basées sur les textes du CGI

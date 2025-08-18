@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Streaming SSE - RAG CGI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .question-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .response-area {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 200px;
+            margin: 15px 0;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        .metadata {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .quick-questions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .quick-question {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .quick-question:hover {
+            background: #e9ecef;
+            border-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Streaming SSE - Service RAG CGI</h1>
+        <p>Test de l'endpoint de streaming avec Server-Sent Events</p>
+        
+        <div class="test-section">
+            <h3>📝 Test Manuel</h3>
+            <input type="text" id="questionInput" class="question-input" 
+                   placeholder="Entrez votre question sur le CGI du Bénin...">
+            <div>
+                <label>Type de contexte:</label>
+                <select id="contextType">
+                    <option value="fiscal">Fiscal</option>
+                    <option value="general">Général</option>
+                    <option value="particulier">Particulier</option>
+                    <option value="entreprise">Entreprise</option>
+                </select>
+                
+                <label>Sources max:</label>
+                <input type="number" id="maxSources" value="3" min="1" max="10">
+                
+                <button onclick="testStreaming()" class="test-button">🚀 Tester le Streaming</button>
+                <button onclick="stopStream()" class="test-button" id="stopBtn" disabled>⏹️ Arrêter</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>⚡ Questions Rapides</h3>
+            <div class="quick-questions">
+                <div class="quick-question" onclick="quickTest('Quels sont les taux de TVA au Bénin ?')">
+                    <strong>💰 TVA</strong><br>
+                    <small>Taux de TVA au Bénin</small>
+                </div>
+                <div class="quick-question" onclick="quickTest('Quels sont les taux d\'imposition sur les revenus locatifs ?')">
+                    <strong>🏠 Revenus locatifs</strong><br>
+                    <small>Imposition des revenus immobiliers</small>
+                </div>
+                <div class="quick-question" onclick="quickTest('Comment déclarer une plus-value immobilière ?')">
+                    <strong>📈 Plus-value</strong><br>
+                    <small>Déclaration des plus-values</small>
+                </div>
+                <div class="quick-question" onclick="quickTest('Quel est le taux de l\'Impôt sur les Bénéfices Agricoles (IBA) ?')">
+                    <strong>🌾 IBA</strong><br>
+                    <small>Impôt sur les Bénéfices Agricoles</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📡 Réponse en Streaming</h3>
+            <div id="status" class="status info">En attente d'une question...</div>
+            <div id="response" class="response-area">Aucune réponse pour le moment</div>
+            <div id="metadata" class="metadata" style="display: none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Informations de Test</h3>
+            <p><strong>Endpoint testé:</strong> <code>http://localhost:8080/query/stream</code></p>
+            <p><strong>Format:</strong> Server-Sent Events (SSE)</p>
+            <p><strong>Paramètres:</strong> question, context_type, max_sources</p>
+            <p><strong>Types d'événements:</strong> search_start, sources_found, response_start, response_chunk, response_complete</p>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let currentResponse = '';
+
+        function testStreaming() {
+            const question = document.getElementById('questionInput').value.trim();
+            if (!question) {
+                alert('Veuillez saisir une question');
+                return;
+            }
+
+            // Reset UI
+            document.getElementById('response').innerHTML = '';
+            document.getElementById('metadata').style.display = 'none';
+            document.getElementById('status').innerHTML = '🔄 Connexion en cours...';
+            document.getElementById('status').className = 'status info';
+            document.getElementById('stopBtn').disabled = false;
+            document.querySelector('button[onclick="testStreaming()"]').disabled = true;
+            
+            currentResponse = '';
+
+            // Paramètres
+            const contextType = document.getElementById('contextType').value;
+            const maxSources = document.getElementById('maxSources').value;
+
+            // URL avec paramètres
+            const url = `http://localhost:8080/query/stream?question=${encodeURIComponent(question)}&context_type=${contextType}&max_sources=${maxSources}`;
+
+            // Créer EventSource
+            eventSource = new EventSource(url);
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleStreamData(data);
+                } catch (e) {
+                    console.error('Erreur parsing JSON:', e);
+                }
+            };
+
+            eventSource.onerror = function(event) {
+                console.error('Erreur SSE:', event);
+                document.getElementById('status').innerHTML = '❌ Erreur de connexion';
+                document.getElementById('status').className = 'status error';
+                stopStream();
+            };
+        }
+
+        function quickTest(question) {
+            document.getElementById('questionInput').value = question;
+            testStreaming();
+        }
+
+        function handleStreamData(data) {
+            const statusDiv = document.getElementById('status');
+            const responseDiv = document.getElementById('response');
+            const metadataDiv = document.getElementById('metadata');
+            
+            if (data.type === 'search_start') {
+                statusDiv.innerHTML = '🔍 Recherche dans les documents CGI...';
+                statusDiv.className = 'status info';
+            } else if (data.type === 'sources_found') {
+                statusDiv.innerHTML = `📚 ${data.count} sources trouvées. Génération de la réponse...`;
+                statusDiv.className = 'status info';
+            } else if (data.type === 'response_start') {
+                statusDiv.innerHTML = '🤖 Génération de la réponse avec Google Gemini...';
+                statusDiv.className = 'status info';
+                responseDiv.innerHTML = '';
+                currentResponse = '';
+            } else if (data.type === 'response_chunk') {
+                currentResponse += data.content;
+                responseDiv.innerHTML = currentResponse;
+            } else if (data.type === 'response_complete') {
+                statusDiv.innerHTML = '✅ Réponse complète !';
+                statusDiv.className = 'status success';
+                
+                // Afficher les métadonnées
+                const metadata = data.metadata;
+                metadataDiv.innerHTML = `
+                    <strong>📊 Métadonnées:</strong><br>
+                    ⏱️ Temps de traitement: ${metadata.processing_time}s<br>
+                    🎯 Score de confiance: ${Math.round(metadata.confidence * 100)}%<br>
+                    🔤 Tokens utilisés: ${metadata.tokens_used}<br>
+                    📚 Sources utilisées: ${metadata.sources_count}
+                `;
+                metadataDiv.style.display = 'block';
+                
+                stopStream();
+            } else if (data.type === 'error') {
+                statusDiv.innerHTML = `❌ Erreur: ${data.message}`;
+                statusDiv.className = 'status error';
+                stopStream();
+            }
+        }
+
+        function stopStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            document.getElementById('stopBtn').disabled = true;
+            document.querySelector('button[onclick="testStreaming()"]').disabled = false;
+        }
+
+        // Test automatique au chargement
+        window.onload = function() {
+            console.log('🚀 Page de test chargée');
+            console.log('📡 Endpoint: http://localhost:8080/query/stream');
+            console.log('🧪 Prêt pour les tests de streaming SSE');
+        };
+    </script>
+</body>
+</html> 

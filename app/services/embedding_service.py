@@ -1,63 +1,44 @@
 # ==============================================================================
-# FILE: app/services/embedding_service.py - Service d'Embeddings Ultra-Léger
+# FILE: app/services/embedding_service.py - Service d'Embeddings Google API
 # ==============================================================================
 
 import asyncio
 import logging
 import numpy as np
 from typing import List, Dict, Any, Optional
-import aiohttp
 import json
 from sklearn.metrics.pairwise import cosine_similarity
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
 class EmbeddingService:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.base_url = "https://api-inference.huggingface.co/models"
-        self.embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
-        self.session = None
+        # Configuration de l'API Google
+        genai.configure(api_key=api_key)
+        self.embedding_model = "models/text-embedding-004"
         
-    async def _get_session(self):
-        """Crée une session HTTP réutilisable"""
-        if self.session is None:
-            self.session = aiohttp.ClientSession()
-        return self.session
-    
     async def _make_embedding_request(self, texts: List[str]) -> List[List[float]]:
-        """Fait une requête à l'API Hugging Face pour les embeddings"""
-        url = f"{self.base_url}/{self.embedding_model}"
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "inputs": texts
-        }
-        
-        session = await self._get_session()
+        """Fait une requête à l'API Google pour les embeddings"""
+        embeddings = []
         
         try:
-            async with session.post(url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    # L'API retourne une liste d'embeddings
-                    if isinstance(result, list):
-                        return result
-                    else:
-                        # Format alternatif
-                        return [result.get("embedding", [])]
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Erreur API Hugging Face: {response.status} - {error_text}")
-                    # Fallback: embeddings aléatoires (pour le développement)
-                    return self._generate_fallback_embeddings(texts)
+            for text in texts:
+                # Utilisation de l'API Google pour les embeddings
+                result = genai.embed_content(
+                    model=self.embedding_model,
+                    content=text
+                )
+                embedding = result["embedding"]
+                embeddings.append(embedding)
+                
+            logger.info(f"✅ {len(embeddings)} embeddings générés via Google API")
+            return embeddings
+            
         except Exception as e:
-            logger.error(f"Erreur lors de la requête d'embedding: {str(e)}")
-            # Fallback: embeddings aléatoires
+            logger.error(f"❌ Erreur lors de la requête d'embedding Google: {str(e)}")
+            # Fallback: embeddings aléatoires (pour le développement)
             return self._generate_fallback_embeddings(texts)
     
     def _generate_fallback_embeddings(self, texts: List[str]) -> List[List[float]]:
@@ -65,8 +46,8 @@ class EmbeddingService:
         logger.warning("⚠️ Utilisation d'embeddings de fallback (développement uniquement)")
         embeddings = []
         for text in texts:
-            # Embedding aléatoire de dimension 384 (comme all-MiniLM-L6-v2)
-            embedding = np.random.normal(0, 1, 384).tolist()
+            # Embedding aléatoire de dimension 768 (comme text-embedding-004)
+            embedding = np.random.normal(0, 1, 768).tolist()
             embeddings.append(embedding)
         return embeddings
     
@@ -77,7 +58,6 @@ class EmbeddingService:
         
         try:
             embeddings = await self._make_embedding_request(texts)
-            logger.info(f"✅ Embeddings générés pour {len(texts)} textes")
             return embeddings
         except Exception as e:
             logger.error(f"❌ Erreur lors de la génération des embeddings: {str(e)}")
@@ -103,7 +83,7 @@ class EmbeddingService:
             return 0.0
     
     def find_most_similar(self, query_embedding: List[float], 
-                          candidate_embeddings: List[List[float]], 
+                              candidate_embeddings: List[List[float]], 
                           top_k: int = 5) -> List[tuple]:
         """Trouve les embeddings les plus similaires"""
         try:
@@ -111,10 +91,10 @@ class EmbeddingService:
             for i, candidate in enumerate(candidate_embeddings):
                 similarity = self.compute_similarity(query_embedding, candidate)
                 similarities.append((i, similarity))
-            
+        
             # Trier par similarité décroissante
             similarities.sort(key=lambda x: x[1], reverse=True)
-            
+        
             # Retourner les top_k
             return similarities[:top_k]
         except Exception as e:
@@ -123,16 +103,13 @@ class EmbeddingService:
     
     async def cleanup(self):
         """Nettoie les ressources"""
-        if self.session:
-            await self.session.close()
-            self.session = None
-        logger.info("🧹 Service d'embeddings nettoyé")
+        logger.info("🧹 Service d'embeddings Google nettoyé")
     
     def get_model_info(self) -> Dict[str, Any]:
         """Retourne les informations sur le modèle d'embedding"""
         return {
             "model": self.embedding_model,
-            "api_provider": "Hugging Face",
-            "embedding_dimension": 384,
+            "api_provider": "Google AI",
+            "embedding_dimension": 768,
             "fallback_mode": "random_embeddings"
         }

@@ -77,7 +77,7 @@ class VectorStore:
     
     async def add_documents(self, 
                            documents: List[Dict[str, Any]], 
-                           embeddings: List[List[float]]):
+                          embeddings: List[List[float]]):
         """
         Ajoute des documents avec leurs embeddings
         
@@ -188,14 +188,14 @@ class VectorStore:
         """Récupère un document par son ID"""
         if not self.is_initialized:
             return None
-        
+            
         return self.documents.get(doc_id)
     
     async def delete_document(self, doc_id: str) -> bool:
         """Supprime un document"""
         if not self.is_initialized or doc_id not in self.documents:
             return False
-        
+    
         try:
             # Trouver l'index de l'embedding
             if doc_id in self.document_ids:
@@ -307,7 +307,7 @@ class VectorStore:
                 self.collection_metadata = data.get("metadata", self.collection_metadata)
                 
                 logger.info(f"📚 Données chargées: {len(self.documents)} documents")
-                
+            
         except Exception as e:
             logger.warning(f"⚠️ Impossible de charger les données existantes: {e}")
             # Initialiser avec des valeurs par défaut
