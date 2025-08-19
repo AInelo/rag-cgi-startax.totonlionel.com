@@ -3,7 +3,8 @@ version: '3.8'
 services:
   # Service principal RAG CGI API - Production
   rag-cgi-api:
-    image: rag-cgi-api:latest  # Utilise l'image pré-buildée
+    # ✅ CORRECTION : Ajouter le namespace complet de votre Docker Hub
+    image: ainelo/rag-cgi-api:latest  # Remplacez *** par votre namespace Docker Hub
     ports:
       - "8080:8000"  # Exposé directement sur le port 8080
     volumes:
