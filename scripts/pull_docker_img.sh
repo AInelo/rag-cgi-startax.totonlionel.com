@@ -6,7 +6,6 @@ set -e
 DOCKER_USERNAME="${DOCKERHUB_USERNAME:?}"
 DOCKER_TOKEN="${DOCKERHUB_TOKEN:?}"
 
-
 # Vérification des variables d'environnement
 DEPLOY_REPO="git@github.com:AInelo/startax-deploy.git"
 DEPLOY_DIR="startax-deploy"
