@@ -29,7 +29,7 @@ COPY --from=builder /root/.local /root/.local
 # Mettre pip packages dans le PATH
 ENV PATH=/root/.local/bin:$PATH
 
-# Créer les dossiers nécessaires
+# ✅ Créer la structure AVANT copie
 RUN mkdir -p /app/vector_db /app/data/cgi_documents
 
 # Copier code source
@@ -37,16 +37,16 @@ COPY app/ ./app/
 COPY static/ ./static/
 COPY data/ ./data/
 
-# ✅ CORRECTION : S'assurer que le répertoire cgi_documents existe
-RUN mkdir -p /app/data/cgi_documents
+# ✅ GARANTIE : Forcer la création après copie + vérification
+RUN mkdir -p /app/data/cgi_documents && \
+    test -d /app/data/cgi_documents && \
+    chmod -R 755 /app/data /app/vector_db
 
 # Exposer port
 EXPOSE 8000
 
-# ✅ SOLUTION : Utiliser uvicorn au lieu de gunicorn
+# CMD
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-
-
 
 
 
