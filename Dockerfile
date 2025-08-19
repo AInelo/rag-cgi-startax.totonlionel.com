@@ -23,9 +23,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Créer utilisateur non-root
-RUN useradd -m -u 1000 app && chown -R app:app /app
-
 # Copier les dépendances depuis builder
 COPY --from=builder /root/.local /root/.local
 
@@ -33,18 +30,15 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # Créer dossier vector_db avec bons droits
-RUN mkdir -p /app/vector_db && chmod -R 755 /app/vector_db
+RUN mkdir -p /app/vector_db
 
 # Copier code source
 COPY app/ ./app/
 COPY static/ ./static/
 COPY data/ ./data/
 
-# Changer d’utilisateur
-USER app
-
 # Exposer port
 EXPOSE 8000
 
-# Commande de démarrage (prod-ready avec 4 workers uvicorn)
+# ✅ SOLUTION SIMPLE : Rester en root, ajouter gunicorn aux requirements
 CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "-w", "4", "-b", "0.0.0.0:8000"]
