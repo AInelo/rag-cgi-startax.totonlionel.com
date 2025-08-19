@@ -17,7 +17,7 @@ chmod 600 "$TMP_KEY_FILE"
 REMOTE_FILE_TO_EXECUTE="pull_docker_img_"$IMAGE_NAME".sh"
 REMOTE_FILE_PATH="/home/$VPS_USER/pull_docker_img_$IMAGE_NAME.sh"
 REMOTE_ENV_SCRIPT="/home/$VPS_USER/creation_env_prod.sh"
-REMOTE_ENV_FILE="/home/$VPS_USER/.env"
+REMOTE_ENV_FILE="/home/$VPS_USER/.env.prod"
 
 # Fonction de nettoyage local
 cleanup_local() {
