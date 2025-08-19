@@ -37,6 +37,9 @@ COPY app/ ./app/
 COPY static/ ./static/
 COPY data/ ./data/
 
+# ✅ CORRECTION : Créer le répertoire cgi_documents s'il n'existe pas
+RUN mkdir -p /app/data/cgi_documents
+
 # Exposer port
 EXPOSE 8000
 
