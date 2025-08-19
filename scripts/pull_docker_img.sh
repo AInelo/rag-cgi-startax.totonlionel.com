@@ -8,7 +8,7 @@ DOCKER_TOKEN="${DOCKERHUB_TOKEN:?}"
 
 
 # Vérification des variables d'environnement
-DEPLOY_REPO="git@github.com:urmapha-uac/startax-deploy.git"
+DEPLOY_REPO="git@github.com:AInelo/startax-deploy.git"
 DEPLOY_DIR="startax-deploy"
 IMAGE_NAME="rag-cgi-api"
 TAG="latest"
