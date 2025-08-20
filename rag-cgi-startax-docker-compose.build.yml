@@ -9,8 +9,3 @@ services:
       args:
         - BUILDKIT_INLINE_CACHE=1
     image: rag-cgi-api:latest
-    # Pas de ports exposés pour le build
-    # Pas de volumes pour le build
-    # Pas d'env_file pour le build
-    # Pas de restart policy pour le build
-    # Commande par défaut du Dockerfile sera utilisée
