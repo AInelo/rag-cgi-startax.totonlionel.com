@@ -29,9 +29,9 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # ✅ DEBUG: Vérifier le contexte de build AVANT les copies
-RUN echo "=== DEBUG: Contenu du contexte de build ==="
 COPY . /tmp/build-context/
-RUN echo "=== Racine du contexte ===" && ls -la /tmp/build-context/ && \
+RUN echo "=== DEBUG: Contenu du contexte de build ===" && \
+    echo "=== Racine du contexte ===" && ls -la /tmp/build-context/ && \
     echo "=== Recherche du dossier data ===" && find /tmp/build-context -name "data" -type d && \
     echo "=== Recherche des fichiers .md ===" && find /tmp/build-context -name "*.md" -type f | head -10 && \
     echo "=== Contenu de data/ si existe ===" && ls -la /tmp/build-context/data/ 2>/dev/null || echo "data/ n'existe pas"
@@ -44,7 +44,7 @@ COPY app/ ./app/
 COPY static/ ./static/
 
 # ✅ Copier data/ avec vérification
-COPY data/ ./data/ 2>/dev/null || echo "ERREUR: data/ non trouvé dans le contexte"
+COPY data/ ./data/
 
 # ✅ GARANTIE : Forcer la création après copie + vérification
 RUN mkdir -p /app/data/cgi_documents && \
@@ -59,8 +59,6 @@ EXPOSE 8000
 
 # CMD
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-
-
 
 
 
