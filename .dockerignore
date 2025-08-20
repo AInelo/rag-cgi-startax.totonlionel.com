@@ -48,11 +48,7 @@ Thumbs.db
 Dockerfile*
 docker-compose*
 .dockerignore
-# Documentation (mais PAS les .md dans data/)
-README.md
-docs/
-# *.md
-# !data/**/*.md
+
 # Tests
 tests/
 test_*
@@ -62,5 +58,5 @@ logs/
 # Données temporaires
 *.tmp
 *.temp
-vector_db/
+# vector_db/
 **pycache**/
