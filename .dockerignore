@@ -1,13 +1,11 @@
 # Fichiers système
 .DS_Store
 Thumbs.db
-
 # Git
 .git
 .gitignore
-
 # Python
-__pycache__
+**pycache**
 *.pyc
 *.pyo
 *.pyd
@@ -27,20 +25,17 @@ coverage.xml
 .mypy_cache
 .pytest_cache
 .hypothesis
-
 # Environnement virtuel
 venv/
 ENV/
 env/
 .venv/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
 # OS
 .DS_Store
 .DS_Store?
@@ -49,27 +44,23 @@ env/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
 # Docker
 Dockerfile*
 docker-compose*
 .dockerignore
-
-# Documentation
+# Documentation (mais PAS les .md dans data/)
 README.md
-*.md
 docs/
-
+*.md
+!data/**/*.md
 # Tests
 tests/
 test_*
-
 # Logs
 logs/
 *.log
-
 # Données temporaires
 *.tmp
 *.temp
 vector_db/
-__pycache__/ 
+**pycache**/
