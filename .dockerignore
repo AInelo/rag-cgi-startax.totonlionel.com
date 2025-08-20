@@ -51,8 +51,8 @@ docker-compose*
 # Documentation (mais PAS les .md dans data/)
 README.md
 docs/
-*.md
-!data/**/*.md
+# *.md
+# !data/**/*.md
 # Tests
 tests/
 test_*
