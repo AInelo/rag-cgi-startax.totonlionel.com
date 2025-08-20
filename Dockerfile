@@ -29,24 +29,69 @@ COPY --from=builder /root/.local /root/.local
 # Mettre pip packages dans le PATH
 ENV PATH=/root/.local/bin:$PATH
 
-# ✅ Créer la structure AVANT copie
-RUN mkdir -p /app/vector_db /app/data/cgi_documents
-
 # Copier code source
 COPY app/ ./app/
 COPY static/ ./static/
-COPY data/ ./data/
 
-# ✅ GARANTIE : Forcer la création après copie + vérification
-RUN mkdir -p /app/data/cgi_documents && \
-    test -d /app/data/cgi_documents && \
-    chmod -R 755 /app/data /app/vector_db
+# ✅ Copier explicitement le dossier data complet
+COPY data/cgi_documents/ ./data/cgi_documents/
+
+# ✅ Créer les autres dossiers nécessaires
+RUN mkdir -p /app/vector_db && \
+    chmod -R 755 /app/data /app/vector_db && \
+    ls -la /app/data/ && \
+    ls -la /app/data/cgi_documents/
 
 # Exposer port
 EXPOSE 8000
 
 # CMD
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # ========================
+# # Étape 2 : Runtime (image finale, plus légère)
+# # ========================
+# FROM python:3.11-slim
+
+# WORKDIR /app
+
+# # Copier les dépendances depuis builder
+# COPY --from=builder /root/.local /root/.local
+
+# # Mettre pip packages dans le PATH
+# ENV PATH=/root/.local/bin:$PATH
+
+# # ✅ Créer la structure AVANT copie
+# RUN mkdir -p /app/vector_db /app/data/cgi_documents
+
+# # Copier code source
+# COPY app/ ./app/
+# COPY static/ ./static/
+# COPY data/ ./data/
+
+# # ✅ GARANTIE : Forcer la création après copie + vérification
+# RUN mkdir -p /app/data/cgi_documents && \
+#     test -d /app/data/cgi_documents && \
+#     chmod -R 755 /app/data /app/vector_db
+
+# # Exposer port
+# EXPOSE 8000
+
+# # CMD
+# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 
 
 

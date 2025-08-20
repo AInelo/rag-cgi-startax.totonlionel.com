@@ -38,7 +38,8 @@ async def lifespan(app: FastAPI):
     # Vérifier si les documents sont déjà indexés
     if not await rag_service.is_indexed():
         logger.info("📚 Indexation des documents CGI en cours...")
-        await rag_service.index_documents("./data/cgi_documents")
+        # await rag_service.index_documents("./data/cgi_documents")
+        await rag_service.index_documents("/app/data/cgi_documents")
         logger.info("✅ Indexation terminée")
     
     yield
