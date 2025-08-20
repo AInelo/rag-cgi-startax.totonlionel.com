@@ -8,8 +8,9 @@ services:
     ports:
       - "8080:8000"  # Exposé directement sur le port 8080
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data_runtime
       - vector_db_prod:/app/vector_db
+
     env_file:
       - /home/admin/.env.prod
     environment:
