@@ -6,6 +6,8 @@
 [![Google AI](https://img.shields.io/badge/Google%20AI-Gemini-orange.svg)](https://aistudio.google.com)
 
 Un système de **Recherche Augmentée par Génération (RAG)** intelligent pour interroger le Code Général des Impôts du Bénin en langage naturel, alimenté par Google Gemini AI.
+###
+
 
 ## 🚀 Fonctionnalités
 
