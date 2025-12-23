@@ -19,6 +19,13 @@ from app.database.vector_store import VectorStore
 from app.utils.markdown_parser import MarkdownParser
 from app.utils.text_splitter import TextSplitter
 
+# Import OpenAI pour fallback
+try:
+    from app.services.llm_service_openai import create_openai_service, OPENAI_AVAILABLE
+except ImportError:
+    OPENAI_AVAILABLE = False
+    logger.warning("⚠️ Service OpenAI non disponible pour le fallback")
+
 logger = logging.getLogger(__name__)
 
 class DocumentSource:
@@ -64,13 +71,34 @@ class RAGService:
             'max_output_tokens': 2048
         }
         
-        # Initialiser directement le service Gemini
+        # Initialiser directement le service Gemini (principal)
         try:
             self.llm_service = create_gemini_service(llm_config)
             logger.info(f"✅ Service LLM Gemini initialisé: {llm_config['model_name']}")
+            self.llm_service_type = "gemini"
         except Exception as e:
             logger.error(f"❌ Erreur initialisation Gemini: {e}")
             self.llm_service = None
+            self.llm_service_type = None
+        
+        # Initialiser OpenAI (fallback)
+        self.openai_service = None
+        if OPENAI_AVAILABLE:
+            try:
+                openai_key = os.getenv("OPENAI_API_KEY", "")
+                if openai_key:
+                    openai_config = {
+                        'api_key': openai_key,
+                        'model_name': 'gpt-3.5-turbo',  # Modèle économique
+                        'temperature': 0.3,
+                        'max_output_tokens': 1000
+                    }
+                    self.openai_service = create_openai_service(openai_config)
+                    logger.info("✅ Service OpenAI (fallback) initialisé")
+                else:
+                    logger.warning("⚠️ OPENAI_API_KEY non trouvée, fallback OpenAI désactivé")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur initialisation OpenAI fallback: {e}")
         
         self.embedding_service = EmbeddingService(self.api_key)
         self.vector_store = VectorStore()
@@ -387,39 +415,126 @@ class RAGService:
                                      max_tokens: int = 1000,
                                      personnalite: str = "expert_cgi") -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Génère une réponse streamée basée sur les sources trouvées
+        Génère une réponse streamée avec fallback automatique Gemini → OpenAI
         
         Args:
             question: Question de l'utilisateur
             sources: Sources pertinentes trouvées
             temperature: Température pour la génération (0.0 à 1.0)
             max_tokens: Nombre maximum de tokens à générer
+            personnalite: Personnalité du chatbot
             
         Yields:
             Chunks de réponse avec métadonnées
         """
         try:
-            # Vérifier que le service LLM est disponible
-            if not self.llm_service:
-                yield {"error": "Service LLM Gemini non disponible", "complete": True}
-                return
-            
             # Construire le contexte à partir des sources
             context = self._build_context_from_sources(sources)
             
             # Créer le prompt système
             system_prompt = self._create_system_prompt()
             
-            # Utiliser directement le service Gemini
-            async for chunk in self.llm_service.generate_response_stream(
-                prompt=question,
-                context_documents=[{"content": context, "source": "CGI_Benin", "score": 1.0}],
-                system_prompt=system_prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                personnalite=personnalite
-            ):
-                yield chunk
+            context_docs = [{"content": context, "source": "CGI_Benin", "score": 1.0}]
+            
+            # Essayer Gemini d'abord
+            if self.llm_service and self.llm_service_type == "gemini":
+                try:
+                    gemini_success = False
+                    last_chunk = None
+                    
+                    async for chunk in self.llm_service.generate_response_stream(
+                        prompt=question,
+                        context_documents=context_docs,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        personnalite=personnalite
+                    ):
+                        last_chunk = chunk
+                        
+                        # Vérifier si c'est une erreur de quota
+                        if chunk.get('error') and chunk.get('quota_error'):
+                            logger.warning("⚠️ Quota Gemini dépassé, basculement vers OpenAI...")
+                            # Sortir de la boucle pour basculer vers OpenAI
+                            break
+                        
+                        # Si on a du contenu, on continue avec Gemini
+                        if chunk.get('content'):
+                            gemini_success = True
+                            yield chunk
+                        
+                        # Si c'est le chunk final et qu'on a du contenu, succès
+                        if chunk.get('complete') and gemini_success:
+                            return  # Succès avec Gemini
+                    
+                    # Si on arrive ici, Gemini a échoué (quota ou autre)
+                    # Vérifier si on doit basculer vers OpenAI
+                    if last_chunk and last_chunk.get('quota_error') and self.openai_service:
+                        logger.info("🔄 Utilisation d'OpenAI comme fallback...")
+                        # Générer avec OpenAI
+                        async for chunk in self.openai_service.generate_response_stream(
+                            prompt=question,
+                            context_documents=context_docs,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            personnalite=personnalite
+                        ):
+                            yield chunk
+                        return
+                    
+                    # Si Gemini a échoué mais pas de fallback disponible
+                    if last_chunk and last_chunk.get('error'):
+                        yield last_chunk
+                        return
+                    
+                except Exception as gemini_error:
+                    error_str = str(gemini_error)
+                    is_quota_error = (
+                        "429" in error_str or 
+                        "quota" in error_str.lower() or 
+                        "Quota exceeded" in error_str or
+                        "rate limit" in error_str.lower()
+                    )
+                    
+                    if is_quota_error and self.openai_service:
+                        logger.warning("⚠️ Quota Gemini dépassé, basculement vers OpenAI...")
+                        # Fallback vers OpenAI
+                        async for chunk in self.openai_service.generate_response_stream(
+                            prompt=question,
+                            context_documents=context_docs,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            personnalite=personnalite
+                        ):
+                            yield chunk
+                        return
+                    else:
+                        # Lever l'erreur si pas de fallback
+                        raise
+            
+            # Si Gemini n'est pas disponible, essayer OpenAI directement
+            elif self.openai_service:
+                logger.info("ℹ️ Gemini non disponible, utilisation d'OpenAI...")
+                async for chunk in self.openai_service.generate_response_stream(
+                    prompt=question,
+                    context_documents=context_docs,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    personnalite=personnalite
+                ):
+                    yield chunk
+                return
+            
+            # Aucun service disponible
+            else:
+                yield {
+                    "error": "Aucun service LLM disponible (ni Gemini ni OpenAI)",
+                    "complete": True,
+                    "quota_error": False
+                }
                     
         except Exception as e:
             error_str = str(e)
@@ -433,10 +548,10 @@ class RAGService:
             )
             
             if is_quota_error:
-                logger.error(f"❌ Quota Gemini dépassé: {error_str[:200]}")
+                logger.error(f"❌ Quota dépassé: {error_str[:200]}")
                 yield {
                     "error": "quota_exceeded",
-                    "error_message": "Le quota de l'API Gemini a été dépassé. Une réponse basée sur les sources sera générée.",
+                    "error_message": "Le quota de l'API a été dépassé. Une réponse basée sur les sources sera générée.",
                     "complete": True,
                     "quota_error": True
                 }

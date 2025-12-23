@@ -19,6 +19,11 @@ required_vars=(
   VECTOR_STORE_TYPE
 )
 
+# Variables optionnelles (pour fallback)
+optional_vars=(
+  OPENAI_API_KEY
+)
+
 for var in "${required_vars[@]}"; do
   if [ -z "${!var:-}" ]; then
     echo "❌ Erreur : la variable d'environnement '$var' est manquante."
@@ -38,6 +43,16 @@ MAX_SOURCES=$MAX_SOURCES
 # ==== Google API ====
 GOOGLE_API_KEY=$GOOGLE_API_KEY
 
+# ==== OpenAI API (Fallback) ====
+EOL
+
+# Ajouter OPENAI_API_KEY seulement si elle est définie
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env.prod
+fi
+
+cat <<EOL >> .env.prod
+
 # ==== Vector Store ====
 VECTOR_STORE_TYPE=$VECTOR_STORE_TYPE
 
@@ -50,10 +65,6 @@ DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME
 
 # ==== Serveur (pour référence) ====
 IP_SERVEUR=$IP_SERVEUR
-
-# ==== Vector Store Type ====
-
-VECTOR_STORE_TYPE=$VECTOR_STORE_TYPE
 
 EOL
 

@@ -99,6 +99,7 @@ ssh -i "$TMP_KEY_FILE" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" <<EOF
   export MAX_SOURCES="${MAX_SOURCES}"
   
   export GOOGLE_API_KEY="${GOOGLE_API_KEY}"
+  export OPENAI_API_KEY="${OPENAI_API_KEY:-}"  # Optionnel pour fallback
   export VECTOR_STORE_TYPE="${VECTOR_STORE_TYPE}"
   export ENVIRONMENT="${ENVIRONMENT}"
 
