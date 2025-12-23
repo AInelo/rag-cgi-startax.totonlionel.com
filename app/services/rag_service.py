@@ -86,6 +86,7 @@ class RAGService:
         if OPENAI_AVAILABLE:
             try:
                 openai_key = os.getenv("OPENAI_API_KEY", "")
+                logger.info(f"🔍 Vérification OPENAI_API_KEY: {'✅ Définie' if openai_key else '❌ Non définie'}")
                 if openai_key:
                     openai_config = {
                         'api_key': openai_key,
@@ -94,11 +95,15 @@ class RAGService:
                         'max_output_tokens': 1000
                     }
                     self.openai_service = create_openai_service(openai_config)
-                    logger.info("✅ Service OpenAI (fallback) initialisé")
+                    logger.info("✅ Service OpenAI (fallback) initialisé avec succès")
                 else:
                     logger.warning("⚠️ OPENAI_API_KEY non trouvée, fallback OpenAI désactivé")
             except Exception as e:
-                logger.warning(f"⚠️ Erreur initialisation OpenAI fallback: {e}")
+                logger.error(f"❌ Erreur initialisation OpenAI fallback: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ Module OpenAI non disponible (pip install openai)")
         
         self.embedding_service = EmbeddingService(self.api_key)
         self.vector_store = VectorStore()
@@ -440,6 +445,7 @@ class RAGService:
             if self.llm_service and self.llm_service_type == "gemini":
                 try:
                     gemini_success = False
+                    quota_error_detected = False
                     last_chunk = None
                     
                     async for chunk in self.llm_service.generate_response_stream(
@@ -454,8 +460,9 @@ class RAGService:
                         
                         # Vérifier si c'est une erreur de quota
                         if chunk.get('error') and chunk.get('quota_error'):
-                            logger.warning("⚠️ Quota Gemini dépassé, basculement vers OpenAI...")
-                            # Sortir de la boucle pour basculer vers OpenAI
+                            quota_error_detected = True
+                            logger.warning("⚠️ Quota Gemini dépassé détecté, basculement vers OpenAI...")
+                            # Ne pas yield l'erreur, on va basculer vers OpenAI
                             break
                         
                         # Si on a du contenu, on continue avec Gemini
@@ -469,7 +476,7 @@ class RAGService:
                     
                     # Si on arrive ici, Gemini a échoué (quota ou autre)
                     # Vérifier si on doit basculer vers OpenAI
-                    if last_chunk and last_chunk.get('quota_error') and self.openai_service:
+                    if quota_error_detected and self.openai_service:
                         logger.info("🔄 Utilisation d'OpenAI comme fallback...")
                         # Générer avec OpenAI
                         async for chunk in self.openai_service.generate_response_stream(
@@ -482,6 +489,10 @@ class RAGService:
                         ):
                             yield chunk
                         return
+                    elif quota_error_detected and not self.openai_service:
+                        logger.error("❌ OpenAI non disponible pour le fallback. Vérifiez OPENAI_API_KEY.")
+                        # Lever l'erreur pour déclencher le fallback simple
+                        raise Exception("Quota dépassé et OpenAI non disponible")
                     
                     # Si Gemini a échoué mais pas de fallback disponible
                     if last_chunk and last_chunk.get('error'):
@@ -530,6 +541,7 @@ class RAGService:
             
             # Aucun service disponible
             else:
+                logger.error("❌ Aucun service LLM disponible (ni Gemini ni OpenAI)")
                 yield {
                     "error": "Aucun service LLM disponible (ni Gemini ni OpenAI)",
                     "complete": True,

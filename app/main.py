@@ -314,6 +314,7 @@ async def stream_query(
             tokens_used = 0
             error_occurred = False
             quota_exceeded = False
+            openai_used = False  # Track si OpenAI a été utilisé
             
             async for chunk in rag_service.generate_response_stream(
                 question, 
@@ -329,8 +330,8 @@ async def stream_query(
                     
                     if is_quota_error:
                         quota_exceeded = True
-                        logger.warning("⚠️ Quota dépassé, génération d'une réponse basée sur les sources")
-                        # Ne pas casser, on va générer une réponse simple après
+                        # Ne pas logger ici, le fallback va être tenté
+                        # Ne pas casser, on va générer une réponse simple après si OpenAI échoue
                         error_occurred = False  # Permettre le fallback
                     else:
                         error_occurred = True
@@ -345,6 +346,10 @@ async def stream_query(
                     tokens_used += chunk.get('tokens', 0)
                     yield f"data: {json.dumps({'type': 'response_chunk', 'content': chunk['content']})}\n\n"
                 
+                # Vérifier si OpenAI a été utilisé (via les métadonnées)
+                if chunk.get('metadata', {}).get('model_used', '').startswith('gpt'):
+                    openai_used = True
+                
                 # Vérifier le contenu total dans les métadonnées (fallback)
                 if chunk.get('complete') and chunk.get('metadata', {}).get('total_content'):
                     total_content = chunk['metadata']['total_content']
@@ -354,10 +359,10 @@ async def stream_query(
                         # Envoyer tout le contenu d'un coup
                         yield f"data: {json.dumps({'type': 'response_chunk', 'content': total_content})}\n\n"
             
-            # Si aucune réponse n'a été générée (quota dépassé ou autre), créer une réponse basée sur les sources
-            if not response_content and sources:
+            # Si aucune réponse n'a été générée ET qu'OpenAI n'a pas été utilisé, créer une réponse basée sur les sources
+            if not response_content and sources and not openai_used:
                 if quota_exceeded:
-                    logger.warning("⚠️ Quota dépassé, création d'une réponse basée sur les sources")
+                    logger.warning("⚠️ Quota dépassé et OpenAI non disponible, création d'une réponse basée sur les sources")
                 else:
                     logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
                 
@@ -420,6 +425,7 @@ async def query_cgi(request: QueryRequest):
         tokens_used = 0
         error_occurred = False
         quota_exceeded = False
+        openai_used = False  # Track si OpenAI a été utilisé
         
         async for chunk in rag_service.generate_response_stream(
             request.question, 
@@ -435,7 +441,7 @@ async def query_cgi(request: QueryRequest):
                 
                 if is_quota_error:
                     quota_exceeded = True
-                    logger.warning("⚠️ Quota dépassé, génération d'une réponse basée sur les sources")
+                    # Ne pas logger ici, le fallback va être tenté
                     # Ne pas marquer comme erreur pour permettre le fallback
                     error_occurred = False
                 else:
@@ -449,6 +455,10 @@ async def query_cgi(request: QueryRequest):
                 response_content += chunk['content']
                 tokens_used += chunk.get('tokens', 0)
             
+            # Vérifier si OpenAI a été utilisé (via les métadonnées)
+            if chunk.get('metadata', {}).get('model_used', '').startswith('gpt'):
+                openai_used = True
+            
             # Vérifier le contenu total dans les métadonnées (fallback)
             if chunk.get('complete') and chunk.get('metadata', {}).get('total_content'):
                 total_content = chunk['metadata']['total_content']
@@ -456,10 +466,10 @@ async def query_cgi(request: QueryRequest):
                     response_content = total_content
                     logger.info("✅ Contenu récupéré depuis les métadonnées")
         
-        # Si aucune réponse n'a été générée, créer une réponse basée sur les sources
-        if not response_content and sources:
+        # Si aucune réponse n'a été générée ET qu'OpenAI n'a pas été utilisé, créer une réponse basée sur les sources
+        if not response_content and sources and not openai_used:
             if quota_exceeded:
-                logger.warning("⚠️ Quota dépassé, création d'une réponse basée sur les sources")
+                logger.warning("⚠️ Quota dépassé et OpenAI non disponible, création d'une réponse basée sur les sources")
             else:
                 logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
             
