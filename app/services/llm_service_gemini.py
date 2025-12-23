@@ -126,44 +126,83 @@ class GeminiLLMService:
             
             # Génération avec Gemini en mode streaming
             logger.info(f"Génération streamée avec {self.model_name} pour: {prompt[:100]}...")
+            logger.debug(f"Longueur du prompt complet: {len(full_prompt)} caractères")
             
             # Utiliser le mode streaming de Gemini
-            response = self.model.generate_content(
-                full_prompt,
-                stream=True,
-                generation_config={
-                    "temperature": temperature,
-                    "max_output_tokens": max_tokens
-                }
-            )
+            try:
+                response = self.model.generate_content(
+                    full_prompt,
+                    stream=True,
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_tokens
+                    }
+                )
+                logger.debug("✅ Réponse Gemini obtenue, début du streaming...")
+            except Exception as gen_error:
+                logger.error(f"❌ Erreur lors de l'appel à Gemini: {gen_error}")
+                raise
             
             # Streamer la réponse
             response_content = ""
+            chunk_count = 0
+            
             for chunk in response:
-                if chunk.text:
-                    response_content += chunk.text
-                    yield {
-                        "content": chunk.text,
-                        "tokens": len(chunk.text.split()),  # Estimation
-                        "complete": False
-                    }
+                try:
+                    # Gérer différentes structures de chunks Gemini
+                    text_content = None
+                    
+                    # Essayer d'abord chunk.text (méthode directe)
+                    if hasattr(chunk, 'text') and chunk.text:
+                        text_content = chunk.text
+                    # Sinon essayer chunk.parts[0].text
+                    elif hasattr(chunk, 'parts') and chunk.parts and len(chunk.parts) > 0:
+                        if hasattr(chunk.parts[0], 'text') and chunk.parts[0].text:
+                            text_content = chunk.parts[0].text
+                    
+                    if text_content:
+                        response_content += text_content
+                        chunk_count += 1
+                        yield {
+                            "content": text_content,
+                            "tokens": len(text_content.split()),  # Estimation
+                            "complete": False
+                        }
+                except Exception as chunk_error:
+                    logger.warning(f"⚠️ Erreur traitement chunk: {chunk_error}")
+                    continue
             
             # Finalisation
             response_time = time.time() - start_time
             self.request_count += 1
             
+            # Si aucune réponse n'a été générée, vérifier pourquoi
+            if not response_content:
+                logger.warning(f"⚠️ Aucun contenu généré. Chunks reçus: {chunk_count}")
+                # Essayer de récupérer la réponse complète si disponible
+                try:
+                    if hasattr(response, 'text') and response.text:
+                        response_content = response.text
+                        logger.info("✅ Contenu récupéré depuis response.text")
+                except:
+                    pass
+            
             yield {
                 "content": "",
-                "tokens": len(response_content.split()),
+                "tokens": len(response_content.split()) if response_content else 0,
                 "complete": True,
                 "metadata": {
                     "model_used": self.model_name,
                     "response_time": response_time,
-                    "total_content": response_content
+                    "total_content": response_content,
+                    "chunks_received": chunk_count
                 }
             }
             
-            logger.info(f"Réponse streamée générée en {response_time:.2f}s")
+            if response_content:
+                logger.info(f"✅ Réponse streamée générée en {response_time:.2f}s ({len(response_content)} caractères, {chunk_count} chunks)")
+            else:
+                logger.error(f"❌ Aucune réponse générée après {response_time:.2f}s")
             
         except Exception as e:
             logger.error(f"Erreur lors de la génération streamée: {e}")

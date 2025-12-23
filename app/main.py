@@ -312,6 +312,7 @@ async def stream_query(
             
             response_content = ""
             tokens_used = 0
+            error_occurred = False
             
             async for chunk in rag_service.generate_response_stream(
                 question, 
@@ -320,11 +321,36 @@ async def stream_query(
                 max_tokens=1000, 
                 personnalite=personnalite
             ):
+                # Vérifier les erreurs
+                if chunk.get('error'):
+                    error_occurred = True
+                    error_message = chunk.get('error', 'Erreur inconnue')
+                    logger.error(f"❌ Erreur dans le chunk: {error_message}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
+                    response_content = f"Erreur lors de la génération: {error_message}"
+                    break
+                
+                # Accumuler le contenu
                 if chunk.get('content'):
                     response_content += chunk['content']
                     tokens_used += chunk.get('tokens', 0)
-                    
                     yield f"data: {json.dumps({'type': 'response_chunk', 'content': chunk['content']})}\n\n"
+                
+                # Vérifier le contenu total dans les métadonnées (fallback)
+                if chunk.get('complete') and chunk.get('metadata', {}).get('total_content'):
+                    total_content = chunk['metadata']['total_content']
+                    if total_content and not response_content:
+                        response_content = total_content
+                        logger.info("✅ Contenu récupéré depuis les métadonnées")
+                        # Envoyer tout le contenu d'un coup
+                        yield f"data: {json.dumps({'type': 'response_chunk', 'content': total_content})}\n\n"
+            
+            # Si aucune réponse n'a été générée, créer une réponse basée sur les sources
+            if not response_content and not error_occurred and sources:
+                logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
+                response_content = rag_service._generate_simple_response(question, sources)
+                # Envoyer la réponse simple
+                yield f"data: {json.dumps({'type': 'response_chunk', 'content': response_content})}\n\n"
             
             # 3. Finalisation
             processing_time = time.time() - start_time
@@ -379,6 +405,7 @@ async def query_cgi(request: QueryRequest):
         # Génération de la réponse
         response_content = ""
         tokens_used = 0
+        error_occurred = False
         
         async for chunk in rag_service.generate_response_stream(
             request.question, 
@@ -387,9 +414,30 @@ async def query_cgi(request: QueryRequest):
             1000, 
             request.personnalite
         ):
+            # Vérifier les erreurs
+            if chunk.get('error'):
+                error_occurred = True
+                error_message = chunk.get('error', 'Erreur inconnue')
+                logger.error(f"❌ Erreur dans le chunk: {error_message}")
+                response_content = f"Erreur lors de la génération: {error_message}"
+                break
+            
+            # Accumuler le contenu
             if chunk.get('content'):
                 response_content += chunk['content']
                 tokens_used += chunk.get('tokens', 0)
+            
+            # Vérifier le contenu total dans les métadonnées (fallback)
+            if chunk.get('complete') and chunk.get('metadata', {}).get('total_content'):
+                total_content = chunk['metadata']['total_content']
+                if total_content and not response_content:
+                    response_content = total_content
+                    logger.info("✅ Contenu récupéré depuis les métadonnées")
+        
+        # Si aucune réponse n'a été générée, créer une réponse basée sur les sources
+        if not response_content and not error_occurred and sources:
+            logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
+            response_content = rag_service._generate_simple_response(request.question, sources)
         
         processing_time = time.time() - start_time
         confidence = rag_service.calculate_confidence(request.question, sources, response_content)

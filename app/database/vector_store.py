@@ -93,13 +93,23 @@ class VectorStore:
                 # Générer un ID unique
                 doc_id = str(uuid.uuid4())
                 
-                # Stocker le document
-                self.documents[doc_id] = {
+                # Stocker le document avec toutes les métadonnées importantes
+                # Les champs title, section, article, source_file peuvent être dans doc ou dans metadata
+                stored_doc = {
                     "id": doc_id,
                     "content": doc["content"],
                     "metadata": doc.get("metadata", {}),
                     "created_at": datetime.now().isoformat()
                 }
+                
+                # Ajouter les champs importants directement si présents
+                for field in ["title", "section", "article", "source_file"]:
+                    if field in doc:
+                        stored_doc[field] = doc[field]
+                    elif field in doc.get("metadata", {}):
+                        stored_doc[field] = doc["metadata"][field]
+                
+                self.documents[doc_id] = stored_doc
                 
                 # Stocker l'embedding
                 self.embeddings.append(embedding)
@@ -153,13 +163,21 @@ class VectorStore:
                 if filter_criteria and not self._matches_filter(document, filter_criteria):
                     continue
                 
-                results.append({
+                # Construire le résultat avec tous les champs disponibles
+                result = {
                     "id": doc_id,
                     "content": document["content"],
-                    "metadata": document["metadata"],
+                    "metadata": document.get("metadata", {}),
                     "similarity_score": float(similarity),
-                    "created_at": document["created_at"]
-                })
+                    "created_at": document.get("created_at", "")
+                }
+                
+                # Ajouter les champs title, section, article, source_file s'ils existent
+                for field in ["title", "section", "article", "source_file"]:
+                    if field in document:
+                        result[field] = document[field]
+                
+                results.append(result)
             
             # Trier par score de similarité décroissant
             results.sort(key=lambda x: x["similarity_score"], reverse=True)

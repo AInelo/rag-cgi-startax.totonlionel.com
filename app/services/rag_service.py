@@ -303,15 +303,23 @@ class RAGService:
             # Convertir en objets DocumentSource
             sources = []
             for result in results:
+                metadata = result.get("metadata", {})
+                
+                # Extraire les informations depuis les métadonnées ou directement depuis result
+                # Les métadonnées peuvent contenir title, section, article, source_file
+                # ou ces infos peuvent être dans le document original
                 source = DocumentSource(
-                    title=result.get("title", ""),
-                    section=result.get("section", ""),
-                    article=result.get("article", ""),
+                    title=result.get("title") or metadata.get("title", ""),
+                    section=result.get("section") or metadata.get("section", ""),
+                    article=result.get("article") or metadata.get("article", ""),
                     content=result.get("content", ""),
-                    source_file=result.get("source_file", ""),
+                    source_file=result.get("source_file") or metadata.get("source_file", ""),
                     relevance_score=result.get("similarity_score", 0.0)
                 )
-                source.metadata = result.get("metadata", {})
+                
+                # Copier toutes les métadonnées
+                source.metadata = metadata.copy()
+                
                 # Ajouter le score du re-ranker si disponible
                 if "reranker_score" in result:
                     source.metadata["reranker_score"] = result["reranker_score"]
