@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Union, AsyncGenerator, Any
 from dataclasses import dataclass
 import json
 import time
+import asyncio
 from datetime import datetime
 
 # Configuration du logging
@@ -128,20 +129,61 @@ class GeminiLLMService:
             logger.info(f"Génération streamée avec {self.model_name} pour: {prompt[:100]}...")
             logger.debug(f"Longueur du prompt complet: {len(full_prompt)} caractères")
             
-            # Utiliser le mode streaming de Gemini
-            try:
-                response = self.model.generate_content(
-                    full_prompt,
-                    stream=True,
-                    generation_config={
-                        "temperature": temperature,
-                        "max_output_tokens": max_tokens
-                    }
-                )
-                logger.debug("✅ Réponse Gemini obtenue, début du streaming...")
-            except Exception as gen_error:
-                logger.error(f"❌ Erreur lors de l'appel à Gemini: {gen_error}")
-                raise
+            # Utiliser le mode streaming de Gemini avec retry pour les erreurs de quota
+            max_retries = 2
+            retry_delay = 1
+            response = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    response = self.model.generate_content(
+                        full_prompt,
+                        stream=True,
+                        generation_config={
+                            "temperature": temperature,
+                            "max_output_tokens": max_tokens
+                        }
+                    )
+                    logger.debug("✅ Réponse Gemini obtenue, début du streaming...")
+                    break  # Succès, sortir de la boucle
+                    
+                except Exception as gen_error:
+                    error_str = str(gen_error)
+                    
+                    # Détecter les erreurs de quota (429)
+                    is_quota_error = (
+                        "429" in error_str or 
+                        "quota" in error_str.lower() or 
+                        "Quota exceeded" in error_str or
+                        "rate limit" in error_str.lower()
+                    )
+                    
+                    if is_quota_error:
+                        # Extraire le délai de retry si disponible
+                        retry_delay = 30  # Délai par défaut
+                        if "retry_delay" in error_str or "retry in" in error_str.lower():
+                            # Essayer d'extraire le nombre de secondes
+                            import re
+                            delay_match = re.search(r'retry in (\d+(?:\.\d+)?)s', error_str.lower())
+                            if delay_match:
+                                retry_delay = int(float(delay_match.group(1))) + 5  # Ajouter 5s de marge
+                        
+                        if attempt < max_retries:
+                            logger.warning(f"⚠️ Quota dépassé (tentative {attempt + 1}/{max_retries + 1}). Attente de {retry_delay}s avant retry...")
+                            await asyncio.sleep(retry_delay)
+                            continue
+                        else:
+                            # Dernière tentative échouée, lever l'erreur
+                            logger.error(f"❌ Quota dépassé après {max_retries + 1} tentatives. Utilisation du fallback.")
+                            raise gen_error
+                    else:
+                        # Autre type d'erreur, lever immédiatement
+                        logger.error(f"❌ Erreur lors de l'appel à Gemini: {gen_error}")
+                        raise gen_error
+            
+            # Si aucune réponse n'a été obtenue après les retries
+            if response is None:
+                raise Exception("Impossible d'obtenir une réponse de Gemini après plusieurs tentatives")
             
             # Streamer la réponse
             response_content = ""
@@ -205,11 +247,31 @@ class GeminiLLMService:
                 logger.error(f"❌ Aucune réponse générée après {response_time:.2f}s")
             
         except Exception as e:
-            logger.error(f"Erreur lors de la génération streamée: {e}")
-            yield {
-                "error": f"Erreur lors de la génération: {str(e)}",
-                "complete": True
-            }
+            error_str = str(e)
+            
+            # Détecter les erreurs de quota
+            is_quota_error = (
+                "429" in error_str or 
+                "quota" in error_str.lower() or 
+                "Quota exceeded" in error_str or
+                "rate limit" in error_str.lower()
+            )
+            
+            if is_quota_error:
+                logger.error(f"❌ Quota Gemini dépassé: {error_str[:200]}")
+                yield {
+                    "error": "quota_exceeded",
+                    "error_message": "Le quota de l'API Gemini a été dépassé. Une réponse basée sur les sources sera générée.",
+                    "complete": True,
+                    "quota_error": True
+                }
+            else:
+                logger.error(f"❌ Erreur lors de la génération streamée: {e}")
+                yield {
+                    "error": f"Erreur lors de la génération: {str(e)}",
+                    "complete": True,
+                    "quota_error": False
+                }
     
     def generate_response(self, 
                          prompt: str, 
@@ -241,9 +303,54 @@ class GeminiLLMService:
                 personnalite="expert_cgi"  # Par défaut pour la méthode non-streamée
             )
             
-            # Génération avec Gemini
+            # Génération avec Gemini avec retry pour les erreurs de quota
             logger.info(f"Génération avec {self.model_name} pour: {prompt[:100]}...")
-            response = self.model.generate_content(full_prompt)
+            
+            max_retries = 2
+            retry_delay = 1
+            response = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    response = self.model.generate_content(full_prompt)
+                    break  # Succès, sortir de la boucle
+                    
+                except Exception as gen_error:
+                    error_str = str(gen_error)
+                    
+                    # Détecter les erreurs de quota (429)
+                    is_quota_error = (
+                        "429" in error_str or 
+                        "quota" in error_str.lower() or 
+                        "Quota exceeded" in error_str or
+                        "rate limit" in error_str.lower()
+                    )
+                    
+                    if is_quota_error:
+                        # Extraire le délai de retry si disponible
+                        retry_delay = 30  # Délai par défaut
+                        if "retry_delay" in error_str or "retry in" in error_str.lower():
+                            import re
+                            delay_match = re.search(r'retry in (\d+(?:\.\d+)?)s', error_str.lower())
+                            if delay_match:
+                                retry_delay = int(float(delay_match.group(1))) + 5  # Ajouter 5s de marge
+                        
+                        if attempt < max_retries:
+                            logger.warning(f"⚠️ Quota dépassé (tentative {attempt + 1}/{max_retries + 1}). Attente de {retry_delay}s avant retry...")
+                            time.sleep(retry_delay)  # Utiliser time.sleep pour méthode non-async
+                            continue
+                        else:
+                            # Dernière tentative échouée, lever l'erreur
+                            logger.error(f"❌ Quota dépassé après {max_retries + 1} tentatives.")
+                            raise gen_error
+                    else:
+                        # Autre type d'erreur, lever immédiatement
+                        logger.error(f"❌ Erreur lors de l'appel à Gemini: {gen_error}")
+                        raise gen_error
+            
+            # Si aucune réponse n'a été obtenue après les retries
+            if response is None:
+                raise Exception("Impossible d'obtenir une réponse de Gemini après plusieurs tentatives")
             
             # Calcul du temps de réponse
             response_time = time.time() - start_time
@@ -268,13 +375,37 @@ class GeminiLLMService:
             return gemini_response
             
         except Exception as e:
-            logger.error(f"Erreur lors de la génération: {e}")
-            return GeminiResponse(
-                content=f"Erreur lors de la génération de la réponse: {str(e)}",
-                model_used=self.model_name,
-                response_time=time.time() - start_time,
-                metadata={"error": True, "error_message": str(e)}
+            error_str = str(e)
+            
+            # Détecter les erreurs de quota
+            is_quota_error = (
+                "429" in error_str or 
+                "quota" in error_str.lower() or 
+                "Quota exceeded" in error_str or
+                "rate limit" in error_str.lower()
             )
+            
+            if is_quota_error:
+                logger.error(f"❌ Quota Gemini dépassé: {error_str[:200]}")
+                return GeminiResponse(
+                    content="",  # Contenu vide pour déclencher le fallback
+                    model_used=self.model_name,
+                    response_time=time.time() - start_time,
+                    metadata={
+                        "error": True, 
+                        "error_message": "Quota dépassé",
+                        "quota_error": True,
+                        "full_error": error_str[:500]
+                    }
+                )
+            else:
+                logger.error(f"Erreur lors de la génération: {e}")
+                return GeminiResponse(
+                    content=f"Erreur lors de la génération de la réponse: {str(e)}",
+                    model_used=self.model_name,
+                    response_time=time.time() - start_time,
+                    metadata={"error": True, "error_message": str(e), "quota_error": False}
+                )
     
     def _build_cgi_prompt(self, 
                          user_query: str,

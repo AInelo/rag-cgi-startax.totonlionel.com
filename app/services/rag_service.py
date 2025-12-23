@@ -422,8 +422,31 @@ class RAGService:
                 yield chunk
                     
         except Exception as e:
-            logger.error(f"❌ Erreur génération réponse: {e}")
-            yield {"error": f"Erreur lors de la génération: {str(e)}", "complete": True}
+            error_str = str(e)
+            
+            # Détecter les erreurs de quota
+            is_quota_error = (
+                "429" in error_str or 
+                "quota" in error_str.lower() or 
+                "Quota exceeded" in error_str or
+                "rate limit" in error_str.lower()
+            )
+            
+            if is_quota_error:
+                logger.error(f"❌ Quota Gemini dépassé: {error_str[:200]}")
+                yield {
+                    "error": "quota_exceeded",
+                    "error_message": "Le quota de l'API Gemini a été dépassé. Une réponse basée sur les sources sera générée.",
+                    "complete": True,
+                    "quota_error": True
+                }
+            else:
+                logger.error(f"❌ Erreur génération réponse: {e}")
+                yield {
+                    "error": f"Erreur lors de la génération: {str(e)}",
+                    "complete": True,
+                    "quota_error": False
+                }
     
     def _build_context_from_sources(self, sources: List[DocumentSource]) -> str:
         """Construit le contexte textuel à partir des sources"""
@@ -448,7 +471,7 @@ Score de pertinence: {source.relevance_score:.2f}
         
         return "\n".join(context_parts)
     
-    def _generate_simple_response(self, question: str, sources: List[DocumentSource]) -> str:
+    def _generate_simple_response(self, question: str, sources: List[DocumentSource], quota_exceeded: bool = False) -> str:
         """Génère une réponse simple basée sur les sources trouvées"""
         try:
             if not sources:
@@ -468,6 +491,12 @@ Score de pertinence: {source.relevance_score:.2f}
             
             # Construire la réponse
             response_parts = []
+            
+            # Ajouter un avertissement si le quota est dépassé
+            if quota_exceeded:
+                response_parts.append("⚠️ **Note importante :** Le service de génération IA est temporairement indisponible (quota dépassé). Voici les informations trouvées dans le Code Général des Impôts :")
+                response_parts.append("")
+            
             response_parts.append(f"Basé sur l'analyse du Code Général des Impôts du Bénin, voici ce que j'ai trouvé concernant votre question :")
             response_parts.append("")
             
@@ -477,7 +506,11 @@ Score de pertinence: {source.relevance_score:.2f}
                 response_parts.append(content)
                 response_parts.append("")
             
-            response_parts.append("**Note :** Cette réponse est basée sur l'analyse automatique des documents CGI. Pour des informations juridiques précises et à jour, consultez un professionnel du droit ou l'administration fiscale.")
+            # Note finale
+            if quota_exceeded:
+                response_parts.append("**Note :** Cette réponse est basée uniquement sur l'extraction automatique des documents CGI. Pour une analyse plus approfondie, réessayez plus tard ou consultez un professionnel du droit ou l'administration fiscale.")
+            else:
+                response_parts.append("**Note :** Cette réponse est basée sur l'analyse automatique des documents CGI. Pour des informations juridiques précises et à jour, consultez un professionnel du droit ou l'administration fiscale.")
             
             return "\n".join(response_parts)
             

@@ -313,6 +313,7 @@ async def stream_query(
             response_content = ""
             tokens_used = 0
             error_occurred = False
+            quota_exceeded = False
             
             async for chunk in rag_service.generate_response_stream(
                 question, 
@@ -323,12 +324,20 @@ async def stream_query(
             ):
                 # Vérifier les erreurs
                 if chunk.get('error'):
-                    error_occurred = True
                     error_message = chunk.get('error', 'Erreur inconnue')
-                    logger.error(f"❌ Erreur dans le chunk: {error_message}")
-                    yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
-                    response_content = f"Erreur lors de la génération: {error_message}"
-                    break
+                    is_quota_error = chunk.get('quota_error', False)
+                    
+                    if is_quota_error:
+                        quota_exceeded = True
+                        logger.warning("⚠️ Quota dépassé, génération d'une réponse basée sur les sources")
+                        # Ne pas casser, on va générer une réponse simple après
+                        error_occurred = False  # Permettre le fallback
+                    else:
+                        error_occurred = True
+                        logger.error(f"❌ Erreur dans le chunk: {error_message}")
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
+                        response_content = f"Erreur lors de la génération: {error_message}"
+                        break
                 
                 # Accumuler le contenu
                 if chunk.get('content'):
@@ -345,10 +354,14 @@ async def stream_query(
                         # Envoyer tout le contenu d'un coup
                         yield f"data: {json.dumps({'type': 'response_chunk', 'content': total_content})}\n\n"
             
-            # Si aucune réponse n'a été générée, créer une réponse basée sur les sources
-            if not response_content and not error_occurred and sources:
-                logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
-                response_content = rag_service._generate_simple_response(question, sources)
+            # Si aucune réponse n'a été générée (quota dépassé ou autre), créer une réponse basée sur les sources
+            if not response_content and sources:
+                if quota_exceeded:
+                    logger.warning("⚠️ Quota dépassé, création d'une réponse basée sur les sources")
+                else:
+                    logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
+                
+                response_content = rag_service._generate_simple_response(question, sources, quota_exceeded=quota_exceeded)
                 # Envoyer la réponse simple
                 yield f"data: {json.dumps({'type': 'response_chunk', 'content': response_content})}\n\n"
             
@@ -406,6 +419,7 @@ async def query_cgi(request: QueryRequest):
         response_content = ""
         tokens_used = 0
         error_occurred = False
+        quota_exceeded = False
         
         async for chunk in rag_service.generate_response_stream(
             request.question, 
@@ -416,11 +430,19 @@ async def query_cgi(request: QueryRequest):
         ):
             # Vérifier les erreurs
             if chunk.get('error'):
-                error_occurred = True
                 error_message = chunk.get('error', 'Erreur inconnue')
-                logger.error(f"❌ Erreur dans le chunk: {error_message}")
-                response_content = f"Erreur lors de la génération: {error_message}"
-                break
+                is_quota_error = chunk.get('quota_error', False)
+                
+                if is_quota_error:
+                    quota_exceeded = True
+                    logger.warning("⚠️ Quota dépassé, génération d'une réponse basée sur les sources")
+                    # Ne pas marquer comme erreur pour permettre le fallback
+                    error_occurred = False
+                else:
+                    error_occurred = True
+                    logger.error(f"❌ Erreur dans le chunk: {error_message}")
+                    response_content = f"Erreur lors de la génération: {error_message}"
+                    break
             
             # Accumuler le contenu
             if chunk.get('content'):
@@ -435,9 +457,13 @@ async def query_cgi(request: QueryRequest):
                     logger.info("✅ Contenu récupéré depuis les métadonnées")
         
         # Si aucune réponse n'a été générée, créer une réponse basée sur les sources
-        if not response_content and not error_occurred and sources:
-            logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
-            response_content = rag_service._generate_simple_response(request.question, sources)
+        if not response_content and sources:
+            if quota_exceeded:
+                logger.warning("⚠️ Quota dépassé, création d'une réponse basée sur les sources")
+            else:
+                logger.warning("⚠️ Aucune réponse générée par le LLM, création d'une réponse basée sur les sources")
+            
+            response_content = rag_service._generate_simple_response(request.question, sources, quota_exceeded=quota_exceeded)
         
         processing_time = time.time() - start_time
         confidence = rag_service.calculate_confidence(request.question, sources, response_content)
