@@ -172,16 +172,46 @@ class VectorStore:
             return []
     
     def _matches_filter(self, document: Dict[str, Any], filter_criteria: Dict[str, Any]) -> bool:
-        """Vérifie si un document correspond aux critères de filtrage"""
+        """Vérifie si un document correspond aux critères de filtrage avancé"""
         try:
+            metadata = document.get("metadata", {})
+            
             for key, value in filter_criteria.items():
-                if key in document["metadata"]:
-                    if document["metadata"][key] != value:
+                # Filtrage par type d'impôt
+                if key == "impot_type":
+                    impot_types = metadata.get("impot_types", [])
+                    if value.upper() not in [it.upper() for it in impot_types]:
+                        return False
+                
+                # Filtrage par régime
+                elif key == "regime":
+                    regime = metadata.get("regime", "")
+                    if regime.upper() != value.upper():
+                        return False
+                
+                # Filtrage par année de mise à jour
+                elif key == "update_year":
+                    update_date = metadata.get("update_date", "")
+                    if not update_date or str(value) not in update_date:
+                        return False
+                
+                # Filtrage par catégorie fiscale
+                elif key == "fiscal_category":
+                    fiscal_category = metadata.get("fiscal_category", "")
+                    if fiscal_category.upper() != value.upper():
+                        return False
+                
+                # Filtrage standard (métadonnées directes)
+                elif key in metadata:
+                    if metadata[key] != value:
                         return False
                 else:
+                    # Si la clé n'existe pas dans les métadonnées, le filtre échoue
                     return False
+            
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur filtrage: {e}")
             return False
     
     async def get_document_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:

@@ -13,6 +13,8 @@ import uuid
 
 from app.services.llm_service_gemini import GeminiLLMService, create_gemini_service
 from app.services.embedding_service import EmbeddingService
+from app.services.reranker_service import RerankerService
+from app.services.metadata_extractor import FiscalMetadataExtractor
 from app.database.vector_store import VectorStore
 from app.utils.markdown_parser import MarkdownParser
 from app.utils.text_splitter import TextSplitter
@@ -75,6 +77,10 @@ class RAGService:
         self.markdown_parser = MarkdownParser()
         self.text_splitter = TextSplitter()
         
+        # Nouveaux services
+        self.reranker_service = RerankerService()
+        self.metadata_extractor = FiscalMetadataExtractor()
+        
         self.is_initialized = False
         self.query_cache = {}  # Cache des requêtes récentes
         self.query_logs = []   # Logs pour analytics
@@ -90,6 +96,9 @@ class RAGService:
             # Initialiser les composants
             # Le service d'embeddings est maintenant initialisé automatiquement
             await self.vector_store.initialize()
+            
+            # Initialiser le re-ranker
+            await self.reranker_service.initialize()
             
             # Vérifier que le service LLM est fonctionnel
             if self.llm_service:
@@ -203,6 +212,9 @@ class RAGService:
             # Parser le Markdown
             parsed_doc = await self.markdown_parser.parse_document(content, file_path)
             
+            # Extraire les métadonnées fiscales
+            fiscal_metadata = self.metadata_extractor.extract_metadata(content, file_path)
+            
             # Découper en chunks intelligents
             chunks = await self.text_splitter.split_document(parsed_doc)
             
@@ -222,7 +234,15 @@ class RAGService:
                         "created_at": datetime.now().isoformat(),
                         "chunk_type": chunk.get("type", "text"),
                         "legal_references": chunk.get("legal_references", []),
-                        "keywords": chunk.get("keywords", [])
+                        "keywords": chunk.get("keywords", []),
+                        # Nouvelles métadonnées fiscales
+                        "impot_types": fiscal_metadata.get("impot_types", []),
+                        "regime": fiscal_metadata.get("regime"),
+                        "update_date": fiscal_metadata.get("update_date"),
+                        "fiscal_category": fiscal_metadata.get("fiscal_category"),
+                        "has_calculations": fiscal_metadata.get("has_calculations", False),
+                        "has_rates": fiscal_metadata.get("has_rates", False),
+                        "has_thresholds": fiscal_metadata.get("has_thresholds", False)
                     }
                 }
                 enriched_chunks.append(enriched_chunk)
@@ -233,8 +253,14 @@ class RAGService:
             logger.error(f"❌ Erreur traitement fichier {file_path}: {e}")
             return []
     
-    async def search_relevant_sources(self, question: str, max_sources: int = 3, 
-                                    context_type: str = "general") -> List[DocumentSource]:
+    async def search_relevant_sources(
+        self, 
+        question: str, 
+        max_sources: int = 3, 
+        context_type: str = "general",
+        filter_criteria: Optional[Dict[str, Any]] = None,
+        use_reranking: bool = True
+    ) -> List[DocumentSource]:
         """
         Recherche les sources les plus pertinentes pour une question
         
@@ -242,6 +268,8 @@ class RAGService:
             question: Question de l'utilisateur
             max_sources: Nombre maximum de sources à retourner
             context_type: Type de contexte (general, particulier, entreprise, fiscal)
+            filter_criteria: Critères de filtrage avancé (impot_type, regime, update_year, etc.)
+            use_reranking: Utiliser le re-ranking avec cross-encoder
             
         Returns:
             Liste des sources pertinentes triées par score
@@ -253,13 +281,24 @@ class RAGService:
             # Créer l'embedding de la question
             question_embedding = await self.embedding_service.get_embedding(question)
             
-            # Rechercher dans la base vectorielle
-            # Ne pas filtrer par context_type car ce champ n'existe pas dans les métadonnées
+            # Rechercher dans la base vectorielle avec filtrage
+            # Récupérer plus de résultats pour le re-ranking
+            initial_top_k = max_sources * 3 if use_reranking else max_sources * 2
+            
             results = await self.vector_store.similarity_search(
                 question_embedding, 
-                top_k=max_sources * 2,  # Récupérer plus pour filtrer
-                filter_criteria=None  # Pas de filtrage strict, on utilise le re-scoring contextuel
+                top_k=initial_top_k,
+                filter_criteria=filter_criteria
             )
+            
+            # Re-ranking avec cross-encoder si disponible
+            if use_reranking and self.reranker_service.is_available():
+                logger.info("🔄 Re-ranking des résultats avec cross-encoder...")
+                results = await self.reranker_service.rerank(
+                    query=question,
+                    documents=results,
+                    top_k=max_sources * 2  # Garder plus de résultats pour le filtrage contextuel
+                )
             
             # Convertir en objets DocumentSource
             sources = []
@@ -273,9 +312,14 @@ class RAGService:
                     relevance_score=result.get("similarity_score", 0.0)
                 )
                 source.metadata = result.get("metadata", {})
+                # Ajouter le score du re-ranker si disponible
+                if "reranker_score" in result:
+                    source.metadata["reranker_score"] = result["reranker_score"]
+                    source.metadata["original_score"] = result.get("original_score", 0.0)
+                
                 sources.append(source)
             
-            # Appliquer des filtres spécifiques au contexte
+            # Appliquer des filtres contextuels
             filtered_sources = await self._filter_sources_by_context(sources, context_type, question)
             
             # Limiter au nombre demandé
@@ -575,6 +619,10 @@ Important: Base-toi UNIQUEMENT sur le contexte fourni. Si une information n'est 
         
         if hasattr(self.vector_store, 'cleanup'):
             await self.vector_store.cleanup()
+        
+        # Nettoyer le re-ranker
+        if hasattr(self.reranker_service, 'cleanup'):
+            await self.reranker_service.cleanup()
         
         # Sauvegarder les logs si nécessaire
         if self.query_logs:

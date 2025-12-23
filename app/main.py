@@ -269,7 +269,11 @@ async def stream_query(
     question: str = Query(..., description="Question à poser au CGI"),
     context_type: str = Query("general", description="Type de contexte"),
     max_sources: int = Query(3, ge=1, le=10, description="Nombre max de sources"),
-    personnalite: str = Query("expert_cgi", description="Personnalité du chatbot")
+    personnalite: str = Query("expert_cgi", description="Personnalité du chatbot"),
+    use_reranking: bool = Query(True, description="Utiliser le re-ranking avec cross-encoder"),
+    impot_type: Optional[str] = Query(None, description="Filtrer par type d'impôt (TVA, IS, IRF, etc.)"),
+    regime: Optional[str] = Query(None, description="Filtrer par régime (REEL, TPS, MICRO)"),
+    update_year: Optional[int] = Query(None, description="Filtrer par année de mise à jour")
 ):
     """Endpoint de streaming pour les requêtes RAG"""
     
@@ -284,8 +288,21 @@ async def stream_query(
             # 1. Recherche des sources
             yield f"data: {json.dumps({'type': 'search_start', 'query_id': query_id})}\n\n"
             
+            # Construire les critères de filtrage
+            filter_criteria = {}
+            if impot_type:
+                filter_criteria["impot_type"] = impot_type
+            if regime:
+                filter_criteria["regime"] = regime
+            if update_year:
+                filter_criteria["update_year"] = update_year
+            
             sources = await rag_service.search_relevant_sources(
-                question, max_sources, context_type
+                question=question,
+                max_sources=max_sources,
+                context_type=context_type,
+                filter_criteria=filter_criteria if filter_criteria else None,
+                use_reranking=use_reranking
             )
             
             yield f"data: {json.dumps({'type': 'sources_found', 'count': len(sources), 'sources': [s.to_dict() for s in sources]})}\n\n"
@@ -352,7 +369,11 @@ async def query_cgi(request: QueryRequest):
     try:
         # Recherche des sources
         sources = await rag_service.search_relevant_sources(
-            request.question, request.max_sources, request.context_type
+            question=request.question,
+            max_sources=request.max_sources,
+            context_type=request.context_type,
+            filter_criteria=request.filter_criteria,
+            use_reranking=request.use_reranking
         )
         
         # Génération de la réponse

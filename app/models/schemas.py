@@ -8,6 +8,8 @@ class QueryRequest(BaseModel):
     max_sources: int = Field(3, ge=1, le=10, description="Nombre max de sources")
     temperature: float = Field(0.3, ge=0.0, le=1.0, description="Créativité de la réponse")
     personnalite: str = Field("expert_cgi", pattern="^(expert|expert_cgi|mathematicien)$", description="Personnalité du chatbot")
+    filter_criteria: Optional[Dict[str, Any]] = Field(None, description="Critères de filtrage avancé (impot_type, regime, update_year, etc.)")
+    use_reranking: bool = Field(True, description="Utiliser le re-ranking avec cross-encoder")
 
 class SourceInfo(BaseModel):
     title: str
