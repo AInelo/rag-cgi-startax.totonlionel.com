@@ -50,6 +50,11 @@ DOCKERHUB_USERNAME=$DOCKERHUB_USERNAME
 
 # ==== Serveur (pour référence) ====
 IP_SERVEUR=$IP_SERVEUR
+
+# ==== Vector Store Type ====
+
+VECTOR_STORE_TYPE=$VECTOR_STORE_TYPE
+
 EOL
 
 echo "✅ Fichier .env.prod créé avec succès."

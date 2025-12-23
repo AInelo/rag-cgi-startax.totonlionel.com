@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Service principal RAG CGI API - exposé directement
   rag-cgi-api:
@@ -18,10 +16,13 @@ services:
       - VECTOR_STORE_TYPE=sklearn
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - startax_network
 
 volumes:
   vector_db:
 
 networks:
-  default:
-    name: rag-cgi-simple-network 
+  startax_network:
+    external: true
+    name: startax_network 
